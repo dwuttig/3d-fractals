@@ -96,14 +96,15 @@ float map(vec3 p){
     }
     trap = orb;
     return d;
-  } else if(u_formula==4){
-    // Mandelbulb
+  } else if(u_formula==4 || u_formula==9){
+    // Mandelbulb (9: Burning-ship variant, z -> |z| every iteration)
     vec3 z = p, pc = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0, r = 0.0, pw = u_p.x;
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
       r = length(z);
       if(r > 2.0) break;
       if(u_xf==1) z = u_rot*z;
+      if(u_formula==9) z = abs(z);
       float theta = acos(clamp(z.z/r,-1.0,1.0))*pw;
       float phi = atan(z.y,z.x)*pw;
       dr = pow(r,pw-1.0)*pw*dr + 1.0;
@@ -113,7 +114,7 @@ float map(vec3 p){
     }
     trap = orb;
     return 0.5*log(max(r,1e-6))*r/dr;
-  } else {
+  } else if(u_formula==5){
     // Sierpinski tetrahedron: fold into one corner, scale by 2 about the vertex
     vec3 z = p;
     for(int i=0;i<20;i++){
@@ -128,6 +129,90 @@ float map(vec3 p){
     }
     trap = orb;
     return (length(z) - u_p.x)/sc;
+  } else if(u_formula>=6 && u_formula<=8){
+    // Solid KIFS fractals: 6 octahedron, 7 Cantor dust (cubes), 8 tetrahedron. u_p = (scale, offset)
+    vec3 z = p; float s0 = u_p.x, off = u_p.y;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      if(u_xf==1) z = u_rot*z + u_sh;
+      if(u_formula==8){
+        if(z.x+z.y < 0.0) z.xy = -z.yx;
+        if(z.x+z.z < 0.0) z.xz = -z.zx;
+        if(z.y+z.z < 0.0) z.zy = -z.yz;
+        orb = min(orb, vec4(abs(z)*0.3, dot(z,z)*0.1));
+        z = z*s0 - vec3((s0-1.0)*off);
+      } else {
+        z = abs(z);
+        if(u_formula==6){
+          if(z.x < z.y) z.xy = z.yx;
+          if(z.x < z.z) z.xz = z.zx;
+          if(z.y < z.z) z.yz = z.zy;
+          orb = min(orb, vec4(z*0.5, dot(z,z)*0.2));
+          z = z*s0 - vec3((s0-1.0)*off, 0.0, 0.0);
+        } else {
+          orb = min(orb, vec4(z*0.3, dot(z,z)*0.1));
+          z = z*s0 - vec3((s0-1.0)*off);
+        }
+      }
+      sc *= s0;
+    }
+    trap = orb;
+    float d;
+    if(u_formula==6) d = (abs(z.x)+abs(z.y)+abs(z.z) - 1.0)*0.57735027;
+    else if(u_formula==7){ vec3 q = abs(z) - 1.0; d = length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0); }
+    else d = (max(abs(z.x+z.y)-z.z, abs(z.x-z.y)+z.z) - 1.0)*0.57735027;
+    return d/sc;
+  } else if(u_formula==10){
+    // Quadratic bulb: triplex square  (x,y,z) -> (x2-y2-z2, 2xz, 2xy) + c
+    vec3 z = p, pc = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0, r = 0.0;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      r = length(z);
+      if(r > 2.0) break;
+      if(u_xf==1) z = u_rot*z;
+      orb = min(orb, vec4(abs(z)*0.5, r*r*0.5));
+      dr = 2.0*r*dr + 1.0;
+      z = vec3(z.x*z.x - z.y*z.y - z.z*z.z, 2.0*z.x*z.z, 2.0*z.x*z.y) + pc;
+    }
+    trap = orb;
+    return 0.5*log(max(r,1e-6))*r/dr;
+  } else if(u_formula==11){
+    // Quaternion Julia set z -> z^2 + c, cut at w = 0.  u_p = c
+    vec3 q3 = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    vec4 z = vec4(q3, 0.0);
+    float md2 = 1.0, mz2 = dot(z,z);
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      md2 *= 4.0*mz2;
+      z = vec4(z.x*z.x - dot(z.yzw,z.yzw), 2.0*z.x*z.yzw) + u_p;
+      mz2 = dot(z,z);
+      orb = min(orb, vec4(abs(z.xyz)*0.5, mz2*0.1));
+      if(mz2 > 4.0) break;
+    }
+    trap = orb;
+    return 0.25*sqrt(mz2/md2)*log(mz2);
+  } else {
+    // Layered triply-periodic minimal surfaces (12 gyroid, 13 Schwarz P, 14 Schwarz D, 15 Neovius).
+    // Each octave adds a thinner shell at a higher frequency; the union of the shells is the foam.
+    vec3 q = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    float th = u_p.x, fq = u_p.y, os = u_p.z;
+    float K = (u_formula==12) ? 2.0 : (u_formula==13) ? 1.8 : (u_formula==14) ? 3.0 : 9.0;   // gradient bounds
+    float d = 1e9, ti = th;       // finer octaves get thinner shells too, so the foam stays open
+    for(int i=0;i<8;i++){
+      if(i>=u_iter) break;
+      vec3 w = q*fq;
+      vec3 s1 = sin(w), c1 = cos(w);
+      float g;
+      if(u_formula==12) g = dot(s1, c1.yzx);
+      else if(u_formula==13) g = c1.x + c1.y + c1.z;
+      else if(u_formula==14) g = s1.x*s1.y*s1.z + s1.x*c1.y*c1.z + c1.x*s1.y*c1.z + c1.x*c1.y*s1.z;
+      else g = 3.0*(c1.x + c1.y + c1.z) + 4.0*c1.x*c1.y*c1.z;
+      d = min(d, (abs(g) - ti)/(K*fq));
+      orb = min(orb, vec4(abs(s1)*0.5, abs(g)*0.3));
+      fq *= os; ti /= os;
+    }
+    trap = orb;
+    return max(d, length(p) - u_p.w);        // clip to a ball of radius u_p.w
   }
 }
 

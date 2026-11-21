@@ -75,6 +75,69 @@ const FORMULAS = [
   { name: 'Sierpinski tetrahedron', iter: 10, steps: 250,
     params: [{ label: 'Roundness', min: 0.2, max: 2.5, step: 0.001, def: 1.0 }],
     cam: { yaw: 0.6, pitch: 0.4, dist: 3.2, target: [0, 0, 0] } },
+  { name: 'Sierpinski octahedron', iter: 8, steps: 200,
+    params: [
+      { label: 'Scale', min: 1.5, max: 3.0, step: 0.001, def: 2.0 },
+      { label: 'Offset', min: 0.6, max: 1.4, step: 0.001, def: 1.0 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 3.4, target: [0, 0, 0] } },
+  { name: 'Cantor dust', iter: 4, steps: 200,
+    params: [
+      { label: 'Scale', min: 2.0, max: 4.5, step: 0.001, def: 3.0 },
+      { label: 'Offset', min: 0.6, max: 1.4, step: 0.001, def: 1.0 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 4.0, target: [0, 0, 0] } },
+  { name: 'Sierpinski tetrahedron (solid)', iter: 8, steps: 200,
+    params: [
+      { label: 'Scale', min: 1.5, max: 3.0, step: 0.001, def: 2.0 },
+      { label: 'Offset', min: 0.6, max: 1.4, step: 0.001, def: 1.0 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 3.6, target: [0, 0, 0] } },
+  { name: 'Burning ship bulb', iter: 9, steps: 300,
+    params: [{ label: 'Power', min: 2, max: 12, step: 0.01, def: 8 }],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 2.8, target: [0, 0, 0] } },
+  { name: 'Quadratic bulb', iter: 10, steps: 300, params: [],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 3.0, target: [0, 0, 0] } },
+  { name: 'Quaternion Julia', iter: 10, steps: 250,
+    params: [
+      { label: 'c.x', min: -1, max: 1, step: 0.001, def: -0.2 },
+      { label: 'c.y', min: -1, max: 1, step: 0.001, def: 0.6 },
+      { label: 'c.z', min: -1, max: 1, step: 0.001, def: 0.2 },
+      { label: 'c.w', min: -1, max: 1, step: 0.001, def: 0.2 },
+    ],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 3.2, target: [0, 0, 0] } },
+  { name: 'Gyroid foam', iter: 3, steps: 250,
+    params: [
+      { label: 'Thickness', min: 0.02, max: 0.8, step: 0.001, def: 0.2 },
+      { label: 'Frequency', min: 0.5, max: 8, step: 0.01, def: 2.0 },
+      { label: 'Octave ratio', min: 1.5, max: 3, step: 0.001, def: 2.0 },
+      { label: 'Radius', min: 0.5, max: 6, step: 0.001, def: 1.6 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.3, dist: 4.6, target: [0, 0, 0] } },
+  { name: 'Schwarz P foam', iter: 3, steps: 250,
+    params: [
+      { label: 'Thickness', min: 0.05, max: 1.5, step: 0.001, def: 0.3 },
+      { label: 'Frequency', min: 0.5, max: 8, step: 0.01, def: 2.0 },
+      { label: 'Octave ratio', min: 1.5, max: 3, step: 0.001, def: 2.0 },
+      { label: 'Radius', min: 0.5, max: 6, step: 0.001, def: 1.6 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.3, dist: 4.6, target: [0, 0, 0] } },
+  { name: 'Schwarz D foam', iter: 3, steps: 250,
+    params: [
+      { label: 'Thickness', min: 0.02, max: 0.8, step: 0.001, def: 0.15 },
+      { label: 'Frequency', min: 0.5, max: 8, step: 0.01, def: 2.0 },
+      { label: 'Octave ratio', min: 1.5, max: 3, step: 0.001, def: 2.0 },
+      { label: 'Radius', min: 0.5, max: 6, step: 0.001, def: 1.6 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.3, dist: 4.6, target: [0, 0, 0] } },
+  { name: 'Neovius foam', iter: 3, steps: 300,
+    params: [
+      { label: 'Thickness', min: 0.1, max: 4, step: 0.001, def: 1.0 },
+      { label: 'Frequency', min: 0.5, max: 8, step: 0.01, def: 2.0 },
+      { label: 'Octave ratio', min: 1.5, max: 3, step: 0.001, def: 2.0 },
+      { label: 'Radius', min: 0.5, max: 6, step: 0.001, def: 1.6 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.3, dist: 4.6, target: [0, 0, 0] } },
 ];
 const LOOK_DEFAULT = {
   fov: 55, aperture: 0.03, focus: 1.0,
@@ -153,7 +216,7 @@ function dynRebase(keepSelection) {
 // Every formula has its own parameters plus three shared extras that reshape it:
 // Twist / Tilt rotate the space every iteration; Shift translates it (Julia offset for Mandelbox / Mandelbulb).
 function paramDefs(fi) {
-  const julia = fi === 2 || fi === 4;
+  const julia = fi === 2 || fi === 4 || fi === 9 || fi === 10;
   return [
     ...FORMULAS[fi].params,
     { label: 'Twist', min: -0.6, max: 0.6, step: 0.001, def: 0, dyn: false },
@@ -479,7 +542,95 @@ function deExtra(p) {
   }
   return (Math.hypot(x, y, z) - q[0]) / sc;
 }
+let deSigned = false;   // true: foams return a signed distance (negative inside the solid)
+function deMore(p) {
+  const q = s.p, n = s.iter, xf = xfState(), f = s.formula;
+  let x = p[0], y = p[1], z = p[2], t;
+  if (f >= 6 && f <= 8) {                       // solid KIFS: octahedron, Cantor dust, tetrahedron
+    const s0 = q[0], off = q[1], k = (s0 - 1) * off;
+    let sc = 1;
+    for (let i = 0; i < n; i++) {
+      if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
+      if (f === 8) {
+        if (x + y < 0) { t = x; x = -y; y = -t; }
+        if (x + z < 0) { t = x; x = -z; z = -t; }
+        if (y + z < 0) { t = y; y = -z; z = -t; }
+        x = x * s0 - k; y = y * s0 - k; z = z * s0 - k;
+      } else {
+        x = Math.abs(x); y = Math.abs(y); z = Math.abs(z);
+        if (f === 6) {
+          if (x < y) { t = x; x = y; y = t; }
+          if (x < z) { t = x; x = z; z = t; }
+          if (y < z) { t = y; y = z; z = t; }
+          x = x * s0 - k; y *= s0; z *= s0;
+        } else {
+          x = x * s0 - k; y = y * s0 - k; z = z * s0 - k;
+        }
+      }
+      sc *= s0;
+    }
+    let d;
+    if (f === 6) d = (Math.abs(x) + Math.abs(y) + Math.abs(z) - 1) * 0.57735027;
+    else if (f === 7) {
+      const qx = Math.abs(x) - 1, qy = Math.abs(y) - 1, qz = Math.abs(z) - 1;
+      d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, Math.max(qy, qz)), 0);
+    } else d = (Math.max(Math.abs(x + y) - z, Math.abs(x - y) + z) - 1) * 0.57735027;
+    return Math.abs(d / sc);
+  }
+  if (f === 9 || f === 10) {                    // Burning-ship bulb, quadratic bulb
+    let zx = x, zy = y, zz = z, dr = 1, r = 0;
+    const jx = x + xf.sx, jy = y + xf.sy, jz = z + xf.sz, pw = q[0];
+    for (let i = 0; i < n; i++) {
+      r = Math.hypot(zx, zy, zz);
+      if (r > 2) break;
+      if (xf.on) { [zx, zy, zz] = xfp(xf, zx, zy, zz, false); }
+      if (f === 9) {
+        zx = Math.abs(zx); zy = Math.abs(zy); zz = Math.abs(zz);
+        const th = Math.acos(clamp(zz / r, -1, 1)) * pw, ph = Math.atan2(zy, zx) * pw;
+        dr = Math.pow(r, pw - 1) * pw * dr + 1;
+        const zr = Math.pow(r, pw);
+        zx = zr * Math.sin(th) * Math.cos(ph) + jx; zy = zr * Math.sin(ph) * Math.sin(th) + jy; zz = zr * Math.cos(th) + jz;
+      } else {
+        dr = 2 * r * dr + 1;
+        const nx = zx * zx - zy * zy - zz * zz, ny = 2 * zx * zz, nz = 2 * zx * zy;
+        zx = nx + jx; zy = ny + jy; zz = nz + jz;
+      }
+    }
+    return Math.abs(0.5 * Math.log(Math.max(r, 1e-6)) * r / dr);
+  }
+  if (f === 11) {                               // quaternion Julia
+    if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
+    let zx = x, zy = y, zz = z, zw = 0, md2 = 1, mz2 = zx * zx + zy * zy + zz * zz;
+    for (let i = 0; i < n; i++) {
+      md2 *= 4 * mz2;
+      const nx = zx * zx - (zy * zy + zz * zz + zw * zw) + q[0], ny = 2 * zx * zy + q[1], nz = 2 * zx * zz + q[2], nw = 2 * zx * zw + q[3];
+      zx = nx; zy = ny; zz = nz; zw = nw;
+      mz2 = zx * zx + zy * zy + zz * zz + zw * zw;
+      if (mz2 > 4) break;
+    }
+    return Math.abs(0.25 * Math.sqrt(mz2 / md2) * Math.log(mz2));
+  }
+  // 12..15: layered minimal-surface foams
+  if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
+  const th = q[0], os = q[2];
+  const K = f === 12 ? 2 : f === 13 ? 1.8 : f === 14 ? 3 : 9;
+  let fq = q[1], d = 1e9, ti = th;
+  for (let i = 0; i < Math.min(n, 8); i++) {
+    const wx = x * fq, wy = y * fq, wz = z * fq;
+    const sx = Math.sin(wx), sy = Math.sin(wy), sz = Math.sin(wz), cx = Math.cos(wx), cy = Math.cos(wy), cz = Math.cos(wz);
+    let g;
+    if (f === 12) g = sx * cy + sy * cz + sz * cx;
+    else if (f === 13) g = cx + cy + cz;
+    else if (f === 14) g = sx * sy * sz + sx * cy * cz + cx * sy * cz + cx * cy * sz;
+    else g = 3 * (cx + cy + cz) + 4 * cx * cy * cz;
+    d = Math.min(d, (Math.abs(g) - ti) / (K * fq));
+    fq *= os; ti /= os;
+  }
+  d = Math.max(d, Math.hypot(p[0], p[1], p[2]) - q[3]);   // clipped to a ball of radius q[3]
+  return deSigned ? d : Math.abs(d);
+}
 function de(p) {
+  if (s.formula >= 6) return deMore(p);
   if (s.formula >= 2) return deExtra(p);
   let x = p[0], y = p[1], z = p[2], sc = 1;
   const n = s.iter, q = s.p, xf = xfState();
@@ -506,8 +657,19 @@ function de(p) {
 }
 
 function setCamFromOrbit(c) {   // presets are authored as orbit cameras; convert to a ship pose
+  c = { ...c };                 // never modify the preset definition itself
   const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch), t = c.target || [0, 0, 0];
-  cam.pos = [t[0] + c.dist * cp * Math.sin(c.yaw), t[1] + c.dist * sp, t[2] + c.dist * cp * Math.cos(c.yaw)];
+  const place = (yaw, dist) => [t[0] + dist * cp * Math.sin(yaw), t[1] + dist * sp, t[2] + dist * cp * Math.cos(yaw)];
+  cam.pos = place(c.yaw, c.dist);
+  if (s.formula >= 12) {
+    // infinite lattices: make sure the ship starts in open space, not inside a shell (a ray starting inside would see no surface)
+    deSigned = true;
+    for (let k = 0; k < 80; k++) {
+      const dist = c.dist * (1 + 0.06 * (k % 6)), pp = place(c.yaw + k * 0.41, dist);
+      if (de(pp) > 0.01 * dist) { cam.pos = pp; c.dist = dist; break; }
+    }
+    deSigned = false;
+  }
   cam.fwd = norm(t.map((v, i) => v - cam.pos[i]));
   cam.up = cross(norm(cross(cam.fwd, [0, 1, 0])), cam.fwd);
   cam.dist0 = cam.dist = c.dist;
@@ -544,6 +706,11 @@ function boundFor() {
     case 3: return 1.75;                                   // Menger sponge: cube, corner at sqrt(3)
     case 4: { const xf = xfState(); return (s.p[0] >= 6 ? 1.5 : 2.1) + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }   // Mandelbulb (+ Julia offset)
     case 5: return xfState().on ? 0 : 1.75 + s.p[0] * Math.pow(0.5, s.iter);   // Sierpinski tetrahedron + blob radius
+    case 6: case 7: case 8: return xfState().on ? 0 : Math.sqrt(3) * (s.p[1] + Math.pow(s.p[0], -s.iter)) * 1.03 + 0.05;   // attractor reaches offset * (1,1,1)
+    case 9: { const xf = xfState(); return (s.p[0] >= 6 ? 1.5 : 2.1) + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
+    case 10: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
+    case 12: case 13: case 14: case 15: return s.p[3] + 0.05;   // foams are clipped to their ball
+    case 11: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz); }
     default: return 0;
   }
 }
@@ -732,6 +899,8 @@ function loop(now) {
   status.textContent = `${outW}×${outH}${hasFloatBlend ? '' : ' (16-bit accum)'} · ${info} · focus ${cam.hit.toExponential(1)}${cam.hit < 3e-6 ? ' (precision limit)' : ''}`;
 }
 // Benchmark hook for the console: __bench(passes, overrides) -> ms per full-resolution pass (GPU-synchronised).
+window.__dbg = () => ({ s, cam, de, rayDist, boundFor, xfState,
+  px: (fx = 0.5, fy = 0.5) => { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); const a = new Float32Array(4); gl.readPixels(Math.floor(tw * fx), Math.floor(th * fy), 1, 1, gl.RGBA, gl.FLOAT, a); return [...a].map((v) => +v.toFixed(3)); } });
 window.__bench = (n = 4, overrides = {}) => {
   const saved = { ...s }; Object.assign(s, overrides);
   fitSizes(1); updateCamInfo();
