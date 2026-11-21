@@ -1,6 +1,6 @@
 # 3D Fractals
 
-Browser-based GPU raymarcher for 3D fractals (Kleinian and Apollonian), with progressive depth of field,
+Browser-based GPU raymarcher for 3D fractals (Kleinian, Apollonian, Mandelbox, Menger sponge, Mandelbulb, Sierpinski tetrahedron), with progressive depth of field,
 soft shadows, ambient occlusion, film grain and PNG export. Fly through the fractal like a spaceship.
 
 ## Controls

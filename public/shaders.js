@@ -43,7 +43,7 @@ float map(vec3 p){
     }
     trap = orb;
     return 0.25*abs(p.y)/sc;
-  } else {
+  } else if(u_formula==1){
     // Kleinian-style: box fold + sphere inversion, distance to a cylinder in folded space
     vec3 cs = vec3(u_p.y, u_p.z, u_p.y);
     for(int i=0;i<20;i++){
@@ -57,6 +57,68 @@ float map(vec3 p){
     trap = orb;
     float rxy = length(p.xy);
     return 0.7*max(rxy-u_p.w, abs(rxy*p.z)/length(p))/sc;
+  } else if(u_formula==2){
+    // Mandelbox: box fold + sphere fold + scale/translate
+    vec3 p0 = p; float dr = 1.0;
+    float minR2 = u_p.y*u_p.y, fixR2 = u_p.z*u_p.z;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      p = clamp(p,-1.0,1.0)*2.0 - p;
+      float r2 = dot(p,p);
+      if(r2 < minR2){ float t = fixR2/minR2; p *= t; dr *= t; }
+      else if(r2 < fixR2){ float t = fixR2/r2; p *= t; dr *= t; }
+      orb = min(orb, vec4(abs(p)*0.2, r2*0.1));
+      p = p*u_p.x + p0; dr = dr*abs(u_p.x) + 1.0;
+    }
+    trap = orb;
+    return length(p)/abs(dr);
+  } else if(u_formula==3){
+    // Menger sponge: a cube minus recursively smaller crosses
+    vec3 q = abs(p) - 1.0;
+    float d = length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+    float s = 1.0;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      vec3 a = mod(p*s, 2.0) - 1.0;
+      s *= 3.0;
+      vec3 r = abs(1.0 - 3.0*abs(a));
+      float da = max(r.x,r.y), db = max(r.y,r.z), dc = max(r.z,r.x);
+      float c = (min(da,min(db,dc)) - u_p.x)/s;
+      orb = min(orb, vec4(abs(a), dot(a,a)*0.3));
+      d = max(d, c);
+    }
+    trap = orb;
+    return d;
+  } else if(u_formula==4){
+    // Mandelbulb
+    vec3 z = p; float dr = 1.0, r = 0.0, pw = u_p.x;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      r = length(z);
+      if(r > 2.0) break;
+      float theta = acos(clamp(z.z/r,-1.0,1.0))*pw;
+      float phi = atan(z.y,z.x)*pw;
+      dr = pow(r,pw-1.0)*pw*dr + 1.0;
+      float zr = pow(r,pw);
+      orb = min(orb, vec4(abs(z)*0.5, r*r*0.5));
+      z = zr*vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + p;
+    }
+    trap = orb;
+    return 0.5*log(max(r,1e-6))*r/dr;
+  } else {
+    // Sierpinski tetrahedron: fold into one corner, scale by 2 about the vertex
+    vec3 z = p;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      if(z.x+z.y < 0.0) z.xy = -z.yx;
+      if(z.x+z.z < 0.0) z.xz = -z.zx;
+      if(z.y+z.z < 0.0) z.zy = -z.yz;
+      orb = min(orb, vec4(abs(z)*0.3, dot(z,z)*0.1));
+      z = z*2.0 - vec3(1.0);
+      sc *= 2.0;
+    }
+    trap = orb;
+    return (length(z) - u_p.x)/sc;
   }
 }
 
@@ -137,9 +199,17 @@ void main(){
     vec4 o = trap;
 
     // albedo from orbit trap: body / gold rims / blue accents
-    vec3 alb = mix(u_colA, u_colB, smoothstep(0.0, 0.9, 1.0 - clamp(o.y*1.6,0.0,1.0)));
-    alb = mix(alb, u_colC, smoothstep(0.35, 1.0, clamp(o.w*1.3,0.0,1.0))*0.55);
-    alb = mix(alb, u_colB*1.2, smoothstep(0.55, 0.0, o.z)*0.35);
+    vec3 alb;
+    if(u_formula < 2){
+      alb = mix(u_colA, u_colB, smoothstep(0.0, 0.9, 1.0 - clamp(o.y*1.6,0.0,1.0)));
+      alb = mix(alb, u_colC, smoothstep(0.35, 1.0, clamp(o.w*1.3,0.0,1.0))*0.55);
+      alb = mix(alb, u_colB*1.2, smoothstep(0.55, 0.0, o.z)*0.35);
+    } else {
+      float k1 = smoothstep(0.0, 1.0, o.w*2.5);
+      float k2 = smoothstep(0.1, 0.8, (o.x + o.y + o.z)*0.8);
+      alb = mix(u_colA, u_colB, k1);
+      alb = mix(alb, u_colC, k2*0.65);
+    }
 
     vec3 L = normalize(u_lightDir);
     float dif = clamp(dot(n,L), 0.0, 1.0);

@@ -43,6 +43,22 @@ const FORMULAS = [
       { label: 'Cylinder radius', min: 1.0, max: 2.4, step: 0.001, def: 1.94 },
     ],
     cam: { yaw: 0.3, pitch: 0.3, dist: 0.15, target: [0, 0, 0] } },
+  { name: 'Mandelbox', iter: 12, steps: 400,
+    params: [
+      { label: 'Scale', min: -3.5, max: 4, step: 0.001, def: 2.0 },
+      { label: 'Min radius', min: 0.1, max: 1.0, step: 0.001, def: 0.5 },
+      { label: 'Fixed radius', min: 0.5, max: 2.0, step: 0.001, def: 1.0 },
+    ],
+    cam: { yaw: 0.7, pitch: 0.35, dist: 9, target: [0, 0, 0] } },
+  { name: 'Menger sponge', iter: 5, steps: 250,
+    params: [{ label: 'Cross width', min: 0.6, max: 1.4, step: 0.001, def: 1.0 }],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 3.4, target: [0, 0, 0] } },
+  { name: 'Mandelbulb', iter: 9, steps: 300,
+    params: [{ label: 'Power', min: 2, max: 12, step: 0.01, def: 8 }],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 2.6, target: [0, 0, 0] } },
+  { name: 'Sierpinski tetrahedron', iter: 10, steps: 250,
+    params: [{ label: 'Roundness', min: 0.2, max: 2.5, step: 0.001, def: 1.0 }],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 3.2, target: [0, 0, 0] } },
 ];
 const LOOK_DEFAULT = {
   fov: 55, aperture: 0.03, focus: 1.0,
@@ -79,6 +95,14 @@ const PRESETS = [
   { name: 'Apollonian Gold', formula: 0, p: [1.18], iter: 10,
     cam: { yaw: 2.0, pitch: 0.1, dist: 2.2 },
     look: { colA: '#6a3a1c', colB: '#ffd27a', colC: '#c9885a', bgTop: '#f7e2bd', bgBot: '#8b4f2c', exposure: 1.3, aperture: 0.05 } },
+  { name: 'Mandelbox Ruins', formula: 2,
+    look: { colA: '#5b2430', colB: '#e9a15a', colC: '#3a6fc0', bgTop: '#d9a9a0', bgBot: '#243b6b', aperture: 0.05, exposure: 1.3 } },
+  { name: 'Menger Sponge', formula: 3,
+    look: { aperture: 0, colA: '#b7849a', colB: '#ffe3c2', colC: '#6fa3e0', bgTop: '#c9c3e8', bgBot: '#1d4f94', exposure: 1.3 } },
+  { name: 'Mandelbulb Bone', formula: 4,
+    look: { aperture: 0, colA: '#8c7a5b', colB: '#f3ead2', colC: '#7aa0d0', bgTop: '#b9bfe0', bgBot: '#2a5da0', exposure: 1.4 } },
+  { name: 'Tetra Crystal', formula: 5,
+    look: { aperture: 0, colA: '#7a3a6a', colB: '#ffd1f0', colC: '#5ab0ff', bgTop: '#3b2a5a', bgBot: '#070818', light: 2.2, exposure: 1.6, vignette: 0.8 } },
 ];
 let currentPreset = 0;
 
@@ -261,7 +285,61 @@ const rot = (v, ax, ang) => {   // Rodrigues rotation of v around unit axis ax
 const fr = (x) => x - Math.floor(x);
 
 // CPU copy of the shader's distance estimator (distance only, no orbit trap).
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const mod2 = (v) => v - 2 * Math.floor(v / 2);
+function deExtra(p) {
+  const q = s.p, n = s.iter;
+  let x = p[0], y = p[1], z = p[2];
+  if (s.formula === 2) {                       // Mandelbox
+    const x0 = x, y0 = y, z0 = z, minR2 = q[1] * q[1], fixR2 = q[2] * q[2];
+    let dr = 1;
+    for (let i = 0; i < n; i++) {
+      x = clamp(x, -1, 1) * 2 - x; y = clamp(y, -1, 1) * 2 - y; z = clamp(z, -1, 1) * 2 - z;
+      const r2 = x * x + y * y + z * z;
+      if (r2 < minR2) { const t = fixR2 / minR2; x *= t; y *= t; z *= t; dr *= t; }
+      else if (r2 < fixR2) { const t = fixR2 / r2; x *= t; y *= t; z *= t; dr *= t; }
+      x = x * q[0] + x0; y = y * q[0] + y0; z = z * q[0] + z0;
+      dr = dr * Math.abs(q[0]) + 1;
+    }
+    return Math.hypot(x, y, z) / Math.abs(dr);
+  }
+  if (s.formula === 3) {                       // Menger sponge
+    const qx = Math.abs(x) - 1, qy = Math.abs(y) - 1, qz = Math.abs(z) - 1;
+    let d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, Math.max(qy, qz)), 0);
+    let sc = 1;
+    for (let i = 0; i < n; i++) {
+      const ax = mod2(x * sc) - 1, ay = mod2(y * sc) - 1, az = mod2(z * sc) - 1;
+      sc *= 3;
+      const rx = Math.abs(1 - 3 * Math.abs(ax)), ry = Math.abs(1 - 3 * Math.abs(ay)), rz = Math.abs(1 - 3 * Math.abs(az));
+      const c = (Math.min(Math.max(rx, ry), Math.min(Math.max(ry, rz), Math.max(rz, rx))) - q[0]) / sc;
+      d = Math.max(d, c);
+    }
+    return d;
+  }
+  if (s.formula === 4) {                       // Mandelbulb
+    let zx = x, zy = y, zz = z, dr = 1, r = 0;
+    const pw = q[0];
+    for (let i = 0; i < n; i++) {
+      r = Math.hypot(zx, zy, zz);
+      if (r > 2) break;
+      const th = Math.acos(clamp(zz / r, -1, 1)) * pw, ph = Math.atan2(zy, zx) * pw;
+      dr = Math.pow(r, pw - 1) * pw * dr + 1;
+      const zr = Math.pow(r, pw);
+      zx = zr * Math.sin(th) * Math.cos(ph) + x; zy = zr * Math.sin(ph) * Math.sin(th) + y; zz = zr * Math.cos(th) + z;
+    }
+    return Math.abs(0.5 * Math.log(Math.max(r, 1e-6)) * r / dr);
+  }
+  let sc = 1;                                  // Sierpinski tetrahedron
+  for (let i = 0; i < n; i++) {
+    if (x + y < 0) { const t = x; x = -y; y = -t; }
+    if (x + z < 0) { const t = x; x = -z; z = -t; }
+    if (y + z < 0) { const t = y; y = -z; z = -t; }
+    x = x * 2 - 1; y = y * 2 - 1; z = z * 2 - 1; sc *= 2;
+  }
+  return (Math.hypot(x, y, z) - q[0]) / sc;
+}
 function de(p) {
+  if (s.formula >= 2) return deExtra(p);
   let x = p[0], y = p[1], z = p[2], sc = 1;
   const n = s.iter, q = s.p;
   if (s.formula === 0) {
