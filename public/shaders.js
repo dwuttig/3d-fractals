@@ -140,14 +140,18 @@ float trace(vec3 ro, vec3 rd, out float steps){
     t = max(-b - h, 0.0);
     tmax = min(tmax, -b + h);
   }
+  float d = 1e9;
   for(int i=0;i<2048;i++){
     if(i>=u_steps) break;
-    float d = map(ro+rd*t);
+    d = map(ro+rd*t);
     if(d < t*u_pix*0.5 + 1e-7) return t;
     t += d*0.95;
     steps += 1.0;
     if(t>tmax) break;
   }
+  // Out of steps but still skimming a surface (grazing rays, or the reduced step budget of the preview):
+  // treat it as a hit instead of letting it fall through to the sky colour.
+  if(t <= tmax && d < t*u_pix*24.0 + 1e-6) return t;
   return -1.0;
 }
 
@@ -167,10 +171,17 @@ float calcAO(vec3 p, vec3 n){
   // Two random taps per sample (one from the near half, one from the far half of the six original taps).
   // 3x each makes this an unbiased estimate of the six-tap sum; the progressive accumulation averages it out.
   float occ = 0.0;
-  for(int k=0;k<2;k++){
-    int i = 1 + k*3 + int(rnd()*3.0);
-    float h = u_aoRad*float(i)/6.0;
-    occ += 3.0*(h - map(p+n*h))*pow(0.75, float(i-1))/u_aoRad;
+  if(u_preview==1 || u_frame<6){
+    for(int i=1;i<=6;i++){
+      float h = u_aoRad*float(i)/6.0;
+      occ += (h - map(p+n*h))*pow(0.75, float(i-1))/u_aoRad;
+    }
+  } else {
+    for(int k=0;k<2;k++){
+      int i = 1 + k*3 + int(rnd()*3.0);
+      float h = u_aoRad*float(i)/6.0;
+      occ += 3.0*(h - map(p+n*h))*pow(0.75, float(i-1))/u_aoRad;
+    }
   }
   return clamp(1.0 - u_ao*occ*0.9, 0.0, 1.0);
 }
@@ -223,7 +234,7 @@ void main(){
 
     vec3 L = normalize(u_lightDir);
     float dif = clamp(dot(n,L), 0.0, 1.0);
-    float sha = (u_preview==0 && u_shadow>0.0 && dif>0.0) ? mix(1.0, softShadow(p+n*e*2.0, L, e*4.0), u_shadow) : 1.0;
+    float sha = (u_shadow>0.0 && dif>0.0) ? mix(1.0, softShadow(p+n*e*2.0, L, e*4.0), u_shadow) : 1.0;
     float ao  = calcAO(p, n);
     float stepAO = 1.0 - pow(steps/float(u_steps), 0.6)*0.6;
     ao *= stepAO;

@@ -546,7 +546,7 @@ function renderBand(preview) {
   gl.uniform1i(P.u('u_frame'), pass);
   gl.uniform1i(P.u('u_formula'), s.formula);
   gl.uniform1i(P.u('u_iter'), s.iter);
-  gl.uniform1i(P.u('u_steps'), preview ? Math.min(s.steps, 140) : s.steps);
+  gl.uniform1i(P.u('u_steps'), preview ? Math.min(s.steps, 200) : s.steps);
   gl.uniform1i(P.u('u_preview'), preview ? 1 : 0);
   const pp = [...s.p, 0, 0, 0, 0].slice(0, 4);
   gl.uniform4f(P.u('u_p'), pp[0], pp[1], pp[2], pp[3]);
@@ -594,7 +594,13 @@ function draw() {
 }
 
 const status = $('#status');
-let lastT = 0;
+let lastT = 0, previewScale = 0.5;
+// Pick the preview resolution from the measured GPU cost so that moving stays smooth but as sharp as possible.
+function updatePreviewScale() {
+  if (!msPerMpx) return;
+  const sc = Math.sqrt(9 / (msPerMpx * (outW * outH) / 1e6));
+  previewScale = [0.25, 0.35, 0.5, 0.7, 1].filter((v) => v <= sc).pop() ?? 0.25;
+}
 function loop(now) {
   requestAnimationFrame(loop);
   const rawDt = now - lastT;
@@ -604,7 +610,8 @@ function loop(now) {
   budgetMs = Math.max(FRAME_BUDGET_MS, Math.min(MAX_BUDGET_MS, frameDtAvg * 0.75));
   if (stepFly(dt)) markDirty();
   const interacting = now - lastInteract < 180;
-  const scale = interacting ? 0.35 : 1;
+  if (!interacting) updatePreviewScale();
+  const scale = interacting ? previewScale : 1;
   if (fitSizes(scale)) dirty = true;
   if (dirty) { updateCamInfo(); pass = 0; band = 0; dirty = false; }
   pollTimer();
