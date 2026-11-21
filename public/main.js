@@ -166,10 +166,13 @@ function stepDynamic(now) {
   paramDefs(s.formula).forEach((q, i) => {
     if (!dyn.use[i]) return;
     const t = (now - dyn.t0[i]) / 1000;
-    const amp = 0.015 * s.dynStrength * (q.max - q.min); // 1.5% of the slider range at strength 1: a gentle morph
+    // Strength 1 is a gentle morph (about 1.5% of the slider range); the slider's maximum (5) lets the value
+    // swing across the whole allowed range: k is the share of the room towards each limit that the wave may use.
+    const k = Math.min(1, 0.03 * Math.pow(s.dynStrength, 2.18));
     const period = 24 + 9 * i;                           // seconds; a different slow rhythm per parameter
     const wave = 0.7 * Math.sin((2 * Math.PI * t) / period) + 0.3 * Math.sin((2 * Math.PI * t) / (period * 0.618));
-    s.p[i] = Math.max(q.min, Math.min(q.max, dyn.base[i] + amp * wave));
+    const room = wave >= 0 ? q.max - dyn.base[i] : dyn.base[i] - q.min;
+    s.p[i] = Math.max(q.min, Math.min(q.max, dyn.base[i] + wave * k * room));
     const ui = refs.params && refs.params[i];
     if (ui && document.activeElement !== ui.inp) {
       ui.inp.value = s.p[i];
