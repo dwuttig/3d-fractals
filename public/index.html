@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D Fractal Renderer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="nogl" hidden>WebGL2 with EXT_color_buffer_float is required.</div>
+<div id="status"></div>
+<aside id="panel">
+  <header><h1>Fractal Renderer</h1><button id="collapse" title="Collapse">–</button></header>
+  <div id="body">
+    <div class="hint">Drag: look · W/A/S/D: fly · Space/C: up/down · Q/E: roll · Shift: boost · Wheel: speed · X: level horizon</div>
+    <section><h2>Presets</h2><div id="g-presets"></div></section>
+    <section><h2>Fractal</h2><div id="g-fractal"></div></section>
+    <section><h2>Camera &amp; lens</h2><div id="g-camera"></div></section>
+    <section><h2>Light &amp; color</h2><div id="g-light"></div></section>
+    <section><h2>Film</h2><div id="g-film"></div></section>
+    <section><h2>Render</h2><div id="g-render"></div>
+      <div class="row buttons">
+        <button id="reset-cam">Reset camera</button>
+        <button id="save">Save PNG</button>
+      </div>
+    </section>
+  </div>
+</aside>
+<script src="shaders.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

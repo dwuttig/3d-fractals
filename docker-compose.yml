@@ -1,0 +1,7 @@
+services:
+  fractals:
+    build: .
+    container_name: 3d-fractals
+    ports:
+      - "8080:80"
+    restart: unless-stopped
