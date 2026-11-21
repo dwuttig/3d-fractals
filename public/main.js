@@ -374,6 +374,8 @@ function slider(group, label, key, min, max, step, opts = {}) {
   group.appendChild(row);
   return { inp, val };
 }
+// alphabetical order for dropdowns of names (values keep pointing at the original entries)
+const byLabel = (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base', numeric: true });
 function select(group, label, options, get, set) {
   const row = document.createElement('div'); row.className = 'row sel';
   row.innerHTML = `<label></label><select></select>`;
@@ -406,7 +408,7 @@ const gFractal = $('#g-fractal');
 const gParams = document.createElement('div');
 function buildFractalUI() {
   gFractal.innerHTML = '';
-  select(gFractal, 'Formula', FORMULAS.map((f, i) => ({ label: f.name, value: i })), () => s.formula, (v) => setFormula(+v));
+  select(gFractal, 'Formula', FORMULAS.map((f, i) => ({ label: f.name, value: i })).sort(byLabel), () => s.formula, (v) => setFormula(+v));
   slider(gFractal, 'Iterations', 'iter', 2, 20, 1);
   gParams.innerHTML = '';
   const hint = document.createElement('div'); hint.className = 'hint';
@@ -465,7 +467,7 @@ function applyPreset(i, full) {
 const gPresets = $('#g-presets');
 function buildPresetUI() {
   gPresets.innerHTML = '';
-  select(gPresets, 'Preset', PRESETS.map((p, i) => ({ label: p.name, value: i })), () => currentPreset, (v) => applyPreset(+v, false));
+  select(gPresets, 'Preset', PRESETS.map((p, i) => ({ label: p.name, value: i })).sort(byLabel), () => currentPreset, (v) => applyPreset(+v, false));
   const row = document.createElement('div'); row.className = 'row buttons';
   row.innerHTML = '<button>Reset to default</button>';
   row.firstChild.onclick = () => applyPreset(0, true);
@@ -484,7 +486,7 @@ toggle(gCam, 'Auto-focus', 'autofocus');
 slider(gCam, 'Focus (×)', 'focus', 0.05, 3, 0.005);
 
 const gLight = $('#g-light'); gLight.innerHTML = '';
-select(gLight, 'Look preset', [{ label: 'Choose\u2026', value: -1 }, ...LOOKS.map((l, i) => ({ label: l.name, value: i }))],
+select(gLight, 'Look preset', [{ label: 'Choose\u2026', value: -1 }, ...LOOKS.map((l, i) => ({ label: l.name, value: i })).sort(byLabel)],
   () => currentLook, (v) => { if (+v >= 0) applyLook(+v); });
 slider(gLight, 'Key light', 'light', 0, 3, 0.01);
 slider(gLight, 'Light azimuth', 'lightYaw', -180, 180, 1);
