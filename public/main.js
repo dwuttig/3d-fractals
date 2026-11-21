@@ -83,7 +83,7 @@ const LOOK_DEFAULT = {
   exposure: 1.4, grain: 0.6, vignette: 0.5, sat: 1.1,
   speed: 1.5, autofocus: true,
 };
-const s = { formula: 1, p: [], iter: 12, steps: 300, ...LOOK_DEFAULT, res: 1, target: 400 };
+const s = { formula: 1, p: [], iter: 12, steps: 300, ...LOOK_DEFAULT, res: 1, target: 400, dynStrength: 1 };
 // Free-flight camera (ship): position + orthonormal fwd/up. `dist` is a length scale that follows the
 // distance estimate at the ship so fog / AO / DOF keep their look when you dive in. `hit` = distance to the
 // surface in the middle of the screen (used for auto-focus).
@@ -148,7 +148,7 @@ function stepDynamic(now) {
   if (!dyn.on) return false;
   const t = (now - dyn.t0) / 1000;
   FORMULAS[s.formula].params.forEach((q, i) => {
-    const amp = 0.015 * (q.max - q.min);                 // 1.5% of the slider range: a gentle morph
+    const amp = 0.015 * s.dynStrength * (q.max - q.min); // 1.5% of the slider range at strength 1: a gentle morph
     const period = 24 + 9 * i;                           // seconds; a different slow rhythm per parameter
     const wave = 0.7 * Math.sin((2 * Math.PI * t) / period) + 0.3 * Math.sin((2 * Math.PI * t) / (period * 0.618));
     s.p[i] = Math.max(q.min, Math.min(q.max, dyn.base[i] + amp * wave));
@@ -216,6 +216,7 @@ function buildFractalUI() {
     slider(gParams, q.label, null, q.min, q.max, q.step, { get: () => s.p[i], set: (v) => { s.p[i] = v; if (dyn.on) dyn.base[i] = v; } }));
   gFractal.appendChild(gParams);
   slider(gFractal, 'Max steps', 'steps', 50, 800, 10);
+  slider(gFractal, 'Dynamic strength', 'dynStrength', 0.1, 5, 0.01, { display: true });
   const row = document.createElement('div'); row.className = 'row buttons';
   row.innerHTML = '<button></button>';
   const btn = row.firstChild;
@@ -243,7 +244,7 @@ function applyLook(i) {
 function applyPreset(i, full) {
   const pr = PRESETS[i], f = FORMULAS[pr.formula];
   Object.assign(s, LOOK_DEFAULT, pr.look || {});
-  if (full) { s.res = 1; s.target = 400; }
+  if (full) { s.res = 1; s.target = 400; s.dynStrength = 1; }
   s.formula = pr.formula;
   s.p = pr.p ? [...pr.p] : f.params.map((q) => q.def);
   s.iter = pr.iter ?? f.iter; s.steps = pr.steps ?? f.steps;
