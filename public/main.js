@@ -106,6 +106,24 @@ const PRESETS = [
 ];
 let currentPreset = 0;
 
+// Light & colour presets: only these keys are touched, so fractal, camera and lens stay as they are.
+const LOOK_KEYS = ['colA', 'colB', 'colC', 'bgTop', 'bgBot', 'light', 'lightYaw', 'lightPitch', 'shadow', 'ao', 'aoRad',
+  'fog', 'exposure', 'sat', 'grain', 'vignette'];
+const LOOKS = [
+  { name: 'Rust & Azure (default)', look: {} },
+  { name: 'Golden Hour', look: { colA: '#6b3a1a', colB: '#ffd28a', colC: '#ff8a3c', bgTop: '#ffd9a8', bgBot: '#8a3a2a', light: 1.8, lightYaw: -70, lightPitch: 18, fog: 0.8, exposure: 1.3, sat: 1.15, vignette: 0.7 } },
+  { name: 'Ice & Steel', look: { colA: '#4b6a9c', colB: '#eaf6ff', colC: '#7fd2ff', bgTop: '#e4f2ff', bgBot: '#0c2a58', light: 1.7, lightYaw: 120, lightPitch: 60, exposure: 1.3, sat: 0.85 } },
+  { name: 'Deep Sea', look: { colA: '#1b5f60', colB: '#ff9068', colC: '#30e6c4', bgTop: '#6fd6c9', bgBot: '#04222c', fog: 1.0, exposure: 1.6, light: 1.5 } },
+  { name: 'Neon Night', look: { colA: '#2a1450', colB: '#ff4fa3', colC: '#38e1ff', bgTop: '#1a0d33', bgBot: '#03030c', light: 2.0, lightYaw: -30, lightPitch: 30, exposure: 1.6, sat: 1.3, vignette: 1.0, grain: 0.9, fog: 0.5 } },
+  { name: 'Monochrome Ink', look: { colA: '#2b2b2f', colB: '#f2f2f2', colC: '#8a8a95', bgTop: '#d8d8dc', bgBot: '#3a3a42', light: 1.8, exposure: 1.4, sat: 0, grain: 0.8, vignette: 0.8 } },
+  { name: 'Sunset Magenta', look: { colA: '#6a1f4f', colB: '#ffb36b', colC: '#ff5e8a', bgTop: '#ffb199', bgBot: '#3a1a6b', light: 1.7, lightYaw: 80, lightPitch: 22, fog: 0.9, exposure: 1.3, sat: 1.25 } },
+  { name: 'Mossy Forest', look: { colA: '#2f4a28', colB: '#d9e58a', colC: '#5fae7a', bgTop: '#cfe0b0', bgBot: '#16301f', light: 1.6, lightYaw: 20, lightPitch: 65, fog: 0.9, exposure: 1.4, sat: 1.05 } },
+  { name: 'Sepia Film', look: { colA: '#5a4030', colB: '#f0d9a8', colC: '#a07850', bgTop: '#e6d3b0', bgBot: '#5a4632', light: 1.7, exposure: 1.4, sat: 0.55, grain: 1.4, vignette: 1.1 } },
+  { name: 'Candy Pastel', look: { colA: '#e89ab8', colB: '#fff0c8', colC: '#8fd0ff', bgTop: '#fbe3f0', bgBot: '#9ac8f0', light: 1.4, lightPitch: 65, ao: 1.3, fog: 0.5, exposure: 1.25, sat: 1.0, grain: 0.3, vignette: 0.3 } },
+  { name: 'Molten Lava', look: { colA: '#2a0a0a', colB: '#ffb02e', colC: '#ff3d1f', bgTop: '#4a1208', bgBot: '#0a0202', light: 1.9, lightYaw: -20, lightPitch: 40, fog: 0.7, exposure: 1.3, sat: 1.3, vignette: 0.9 } },
+];
+let currentLook = -1;
+
 // ---------- UI ----------
 const refs = {};
 function slider(group, label, key, min, max, step, opts = {}) {
@@ -170,6 +188,13 @@ function setFormula(i) {   // manual formula switch from the dropdown: keeps the
   buildFractalUI(); markDirty();
 }
 
+function applyLook(i) {
+  const base = {}; LOOK_KEYS.forEach((k) => { base[k] = LOOK_DEFAULT[k]; });
+  Object.assign(s, base, LOOKS[i].look);
+  currentLook = i;
+  buildUI(); markDirty();
+}
+
 function applyPreset(i, full) {
   const pr = PRESETS[i], f = FORMULAS[pr.formula];
   Object.assign(s, LOOK_DEFAULT, pr.look || {});
@@ -179,6 +204,7 @@ function applyPreset(i, full) {
   s.iter = pr.iter ?? f.iter; s.steps = pr.steps ?? f.steps;
   setCamFromOrbit({ ...f.cam, ...(pr.cam || {}) });
   currentPreset = i;
+  currentLook = -1;
   buildUI(); markDirty();
 }
 
@@ -204,6 +230,8 @@ toggle(gCam, 'Auto-focus', 'autofocus');
 slider(gCam, 'Focus (×)', 'focus', 0.05, 3, 0.005);
 
 const gLight = $('#g-light'); gLight.innerHTML = '';
+select(gLight, 'Look preset', [{ label: 'Choose\u2026', value: -1 }, ...LOOKS.map((l, i) => ({ label: l.name, value: i }))],
+  () => currentLook, (v) => { if (+v >= 0) applyLook(+v); });
 slider(gLight, 'Key light', 'light', 0, 3, 0.01);
 slider(gLight, 'Light azimuth', 'lightYaw', -180, 180, 1);
 slider(gLight, 'Light height', 'lightPitch', 0, 90, 1);
