@@ -208,7 +208,7 @@ const FORMULAS = [
   { name: 'Romanesco', iter: 4, steps: 250,
     params: [
       { label: 'Cone radius', min: 0.25, max: 0.9, step: 0.001, def: 0.38 },
-      { label: 'Floret fill', min: 0.6, max: 1.8, step: 0.001, def: 1.3 },
+      { label: 'Floret fill', min: 0.6, max: 1.9, step: 0.001, def: 1.5 },
       { label: 'Columns', min: 5, max: 24, step: 1, def: 13, dyn: false },
       { label: 'Spiral angle', min: 0, max: 6.2832, step: 0.001, def: 2.39996 },
     ],
@@ -287,7 +287,7 @@ const PRESETS = [
   { name: 'Cube Frame Gold', formula: 23, look: { ...PAL.gold, aperture: 0 } },
   { name: 'Window Sponge Coral', formula: 24, look: { ...PAL.coral, aperture: 0 } },
   { name: 'Quartic Julia Jade', formula: 25, look: { ...PAL.jade, aperture: 0 } },
-  { name: 'Romanesco', formula: 26, look: { aperture: 0, colA: '#3f6a1a', colB: '#d9f27a', colC: '#8fd14a', bgTop: '#f2e8c9', bgBot: '#7a6a4a', light: 1.8, lightYaw: 30, lightPitch: 55, exposure: 1.3, fog: 0.3 } },
+  { name: 'Romanesco', formula: 26, look: { aperture: 0, colA: '#245a0e', colB: '#78bb2e', colC: '#b4dd62', bgTop: '#f2e8c9', bgBot: '#7a6a4a', light: 1.6, lightYaw: 30, lightPitch: 55, exposure: 1.0, fog: 0.3 } },
 ];
 let currentPreset = 0;
 
@@ -719,36 +719,35 @@ function deMore2(p) {
     }
     return deSigned ? d : Math.abs(d);
   }
-  if (f === 26) {                                            // Romanesco
+  if (f === 26) {                                            // Romanesco (mirrors the shader)
     if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
     let qx = x * 0.5, qy = y * 0.5 + 0.5, qz = z * 0.5;
     const Rb = q[0], fill = q[1], M = Math.max(q[2], 3), alpha = q[3], delta = 2 * Math.PI / M;
     const rho = clamp(1 - 1.5707963 * fill / M, 0.5, 0.97), lnr = Math.log(rho), Lc = Math.sqrt(1 + Rb * Rb);
     const cone = (a, b, c) => Math.max(-b, (Math.hypot(a, c) + b * Rb - Rb) / Lc);
-    let d = 1e9, scl = 1;
+    let scl = 1, d = cone(qx, qy, qz);
     for (let lvl = 0; lvl < 7; lvl++) {
-      d = Math.min(d, cone(qx, qy, qz) / scl);
       if (lvl >= n) break;
       const u = Math.max(1 - qy, 1e-4), theta = Math.atan2(qz, qx), k0 = Math.floor(Math.log(u / 0.97) / lnr);
       let best = 1e9, bq = [qx, qy, qz], bs = 1;
-      for (let a = 0; a < 2; a++) {
-        const k = Math.max(k0 + a, 0), uk = 0.97 * Math.pow(rho, k), yk = 1 - uk, rk = Rb * uk, fk = Math.PI * uk * fill / M;
+      for (let a = 0; a < 4; a++) {
+        const k = Math.max(k0 - 1 + a, 0), uk = 0.97 * Math.pow(rho, k), yk = 1 - uk, rk = Rb * uk, fk = Math.PI * uk * fill / M;
         const phi = k * alpha, m0 = Math.floor((theta - phi) / delta);
         for (let b = 0; b < 2; b++) {
           const th = phi + (m0 + b) * delta, ct = Math.cos(th), st = Math.sin(th);
           const nl = Math.hypot(ct, Rb + 0.9, st), nx = ct / nl, ny = (Rb + 0.9) / nl, nz = st / nl;
           const wx = -st, wz = ct;                                  // w = (-st, 0, ct)
-          const cx = ny * wz - 0 * nz, cy = nz * wx - nx * wz, cz = nx * 0 - ny * wx;   // cross(w, nrm) with w.y = 0
-          const dx = qx - rk * ct, dy = qy - yk, dz = qz - rk * st;
+          const dx = qx - (rk * ct - nx * 0.45 * fk), dy = qy - (yk - ny * 0.45 * fk), dz = qz - (rk * st - nz * 0.45 * fk);
           const lx = (dx * wx + dz * wz) / fk, ly = (dx * nx + dy * ny + dz * nz) / fk;
-          const lz = (dx * (wy_cross_x(nx, ny, nz, wx, wz)) + dy * wy_cross_y(nx, ny, nz, wx, wz) + dz * wy_cross_z(nx, ny, nz, wx, wz)) / fk;
+          const lz = (dx * wy_cross_x(nx, ny, nz, wx, wz) + dy * wy_cross_y(nx, ny, nz, wx, wz) + dz * wy_cross_z(nx, ny, nz, wx, wz)) / fk;
           const dc = cone(lx, ly, lz) * fk;
+          if (dc / scl < d) d = dc / scl;
           if (dc < best) { best = dc; bq = [lx, ly, lz]; bs = fk; }
         }
       }
       [qx, qy, qz] = bq; scl /= bs;
     }
-    d = 2 * 0.6 * d;
+    d = 2 * 0.7 * d;
     return deSigned ? d : Math.abs(d);
   }
   // 21..24: cube carver
