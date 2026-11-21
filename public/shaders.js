@@ -14,7 +14,8 @@ out vec4 outColor;
 
 uniform vec2  u_res;
 uniform int   u_frame;
-uniform int   u_formula, u_iter, u_steps, u_preview;
+uniform int   u_iter, u_steps, u_preview;
+#define u_formula FORMULA   // set per program: only the selected formula is compiled
 uniform vec4  u_p;
 uniform mat3  u_rot;     // twist/tilt rotation applied every iteration
 uniform vec3  u_sh;      // shift / Julia offset
@@ -31,10 +32,14 @@ float rnd(){ rs=pcg(rs); return float(rs)*(1.0/4294967295.0); }
 
 vec4 trap;
 
+// quaternion with the real part in .x
+vec4 qsq(vec4 z){ return vec4(z.x*z.x - dot(z.yzw,z.yzw), 2.0*z.x*z.yzw); }
+vec4 qcube(vec4 z){ float v2 = dot(z.yzw,z.yzw); return vec4(z.x*(z.x*z.x - 3.0*v2), (3.0*z.x*z.x - v2)*z.yzw); }
+
 float map(vec3 p){
   vec4 orb = vec4(1e4);
   float sc = 1.0;
-  if(u_formula==0){
+#if FORMULA==0
     // Apollonian-style sphere inversion in a periodic lattice
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
@@ -47,7 +52,7 @@ float map(vec3 p){
     }
     trap = orb;
     return 0.25*abs(p.y)/sc;
-  } else if(u_formula==1){
+#elif FORMULA==1
     // Kleinian-style: box fold + sphere inversion, distance to a cylinder in folded space
     vec3 cs = vec3(u_p.y, u_p.z, u_p.y);
     for(int i=0;i<20;i++){
@@ -62,7 +67,7 @@ float map(vec3 p){
     trap = orb;
     float rxy = length(p.xy);
     return 0.7*max(rxy-u_p.w, abs(rxy*p.z)/length(p))/sc;
-  } else if(u_formula==2){
+#elif FORMULA==2
     // Mandelbox: box fold + sphere fold + scale/translate
     vec3 p0 = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0;
     float minR2 = u_p.y*u_p.y, fixR2 = u_p.z*u_p.z;
@@ -78,7 +83,7 @@ float map(vec3 p){
     }
     trap = orb;
     return length(p)/abs(dr);
-  } else if(u_formula==3){
+#elif FORMULA==3
     // Menger sponge: a cube minus recursively smaller crosses
     vec3 q = abs(p) - 1.0;
     float d = length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
@@ -96,7 +101,7 @@ float map(vec3 p){
     }
     trap = orb;
     return d;
-  } else if(u_formula==4 || u_formula==9){
+#elif FORMULA==4 || FORMULA==9 || FORMULA==19
     // Mandelbulb (9: Burning-ship variant, z -> |z| every iteration)
     vec3 z = p, pc = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0, r = 0.0, pw = u_p.x;
     for(int i=0;i<20;i++){
@@ -105,6 +110,7 @@ float map(vec3 p){
       if(r > 2.0) break;
       if(u_xf==1) z = u_rot*z;
       if(u_formula==9) z = abs(z);
+      if(u_formula==19) z.y = -z.y;      // conjugate: flips the azimuth
       float theta = acos(clamp(z.z/r,-1.0,1.0))*pw;
       float phi = atan(z.y,z.x)*pw;
       dr = pow(r,pw-1.0)*pw*dr + 1.0;
@@ -114,7 +120,7 @@ float map(vec3 p){
     }
     trap = orb;
     return 0.5*log(max(r,1e-6))*r/dr;
-  } else if(u_formula==5){
+#elif FORMULA==5
     // Sierpinski tetrahedron: fold into one corner, scale by 2 about the vertex
     vec3 z = p;
     for(int i=0;i<20;i++){
@@ -129,7 +135,7 @@ float map(vec3 p){
     }
     trap = orb;
     return (length(z) - u_p.x)/sc;
-  } else if(u_formula>=6 && u_formula<=8){
+#elif FORMULA>=6 && FORMULA<=8
     // Solid KIFS fractals: 6 octahedron, 7 Cantor dust (cubes), 8 tetrahedron. u_p = (scale, offset)
     vec3 z = p; float s0 = u_p.x, off = u_p.y;
     for(int i=0;i<20;i++){
@@ -162,7 +168,7 @@ float map(vec3 p){
     else if(u_formula==7){ vec3 q = abs(z) - 1.0; d = length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0); }
     else d = (max(abs(z.x+z.y)-z.z, abs(z.x-z.y)+z.z) - 1.0)*0.57735027;
     return d/sc;
-  } else if(u_formula==10){
+#elif FORMULA==10
     // Quadratic bulb: triplex square  (x,y,z) -> (x2-y2-z2, 2xz, 2xy) + c
     vec3 z = p, pc = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0, r = 0.0;
     for(int i=0;i<20;i++){
@@ -176,7 +182,7 @@ float map(vec3 p){
     }
     trap = orb;
     return 0.5*log(max(r,1e-6))*r/dr;
-  } else if(u_formula==11){
+#elif FORMULA==11
     // Quaternion Julia set z -> z^2 + c, cut at w = 0.  u_p = c
     vec3 q3 = (u_xf==1) ? (u_rot*p + u_sh) : p;
     vec4 z = vec4(q3, 0.0);
@@ -191,7 +197,96 @@ float map(vec3 p){
     }
     trap = orb;
     return 0.25*sqrt(mz2/md2)*log(mz2);
-  } else {
+#elif FORMULA==16 || FORMULA==25
+    // Quaternion Julia z -> z^3 + c (16) or z^4 + c (25), cut at w = 0.  u_p = c
+    vec3 q3 = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    vec4 z = vec4(q3, 0.0);
+    float dr = 1.0, r = 0.0, pw = (u_formula==16) ? 3.0 : 4.0;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      r = length(z);
+      if(r > 2.0) break;
+      dr = pw*pow(r, pw-1.0)*dr;
+      z = ((u_formula==16) ? qcube(z) : qsq(qsq(z))) + u_p;
+      orb = min(orb, vec4(abs(z.xyz)*0.5, dot(z,z)*0.1));
+    }
+    trap = orb; r = length(z);
+    return 0.5*log(max(r,1e-6))*r/max(dr,1e-30);
+#elif FORMULA==17
+    // Quaternion Mandelbrot z -> z^n + c with c = (x, y, z, w0), n = 2 or 3.  u_p = (w0, n)
+    vec3 q3 = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    vec4 c = vec4(q3, u_p.x), z = vec4(0.0);
+    float dr = 1.0, r = 0.0, pw = (u_p.y > 2.5) ? 3.0 : 2.0;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      r = length(z);
+      if(r > 2.0) break;
+      dr = pw*pow(r, pw-1.0)*dr + 1.0;
+      z = ((pw > 2.5) ? qcube(z) : qsq(z)) + c;
+      orb = min(orb, vec4(abs(z.xyz)*0.5, dot(z,z)*0.1));
+    }
+    trap = orb; r = length(z);
+    return 0.5*log(max(r,1e-6))*r/dr;
+#elif FORMULA==18
+    // Box-fold bulb: box fold, then the quadratic triplex square.  u_p = (box limit, scale)
+    vec3 z = p, pc = p + (u_xf==1 ? u_sh : vec3(0.0));
+    float dr = 1.0, r = 0.0, L = u_p.x, k = u_p.y;
+    for(int i=0;i<20;i++){
+      if(i>=u_iter) break;
+      if(u_xf==1) z = u_rot*z;
+      z = clamp(z,-L,L)*2.0 - z;
+      r = length(z);
+      if(r > 4.0) break;
+      orb = min(orb, vec4(abs(z)*0.3, r*r*0.1));
+      dr = 2.0*k*r*dr + 1.0;
+      z = k*vec3(z.x*z.x - z.y*z.y - z.z*z.z, 2.0*z.x*z.z, 2.0*z.x*z.y) + pc;
+    }
+    trap = orb; r = length(z);
+    return 0.5*log(max(r,1e-6))*r/dr;
+#elif FORMULA==20
+    // Sphere flake: a unit sphere with six children of radius k on the axes, recursively. Fold into one octant
+    // with abs + sort, scale about the child centre, and keep the union (min) of every level.  u_p.x = k
+    vec3 z = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    float k = u_p.x, f = 1.0/k;
+    float d = length(z) - 1.0;
+    for(int i=0;i<12;i++){
+      if(i>=u_iter) break;
+      z = abs(z);
+      if(z.x < z.y) z.xy = z.yx;
+      if(z.x < z.z) z.xz = z.zx;
+      if(z.y < z.z) z.yz = z.zy;
+      orb = min(orb, vec4(z*0.3, dot(z,z)*0.1));
+      z = z*f - vec3((1.0+k)*f, 0.0, 0.0);
+      sc *= f;
+      d = min(d, (length(z) - 1.0)/sc);
+    }
+    trap = orb;
+    return d;
+#elif FORMULA>=21 && FORMULA<=24
+    // Cube carver: every cell of the cube is split in thirds; the cells whose number m of coordinates in the
+    // middle third is NOT in the kept set (bit m of Pattern) are removed, recursively.  u_p = (pattern, width)
+    vec3 q = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    vec3 b = abs(q) - 1.0;
+    float d = length(max(b,0.0)) + min(max(b.x,max(b.y,b.z)),0.0);
+    int pat = int(u_p.x + 0.5);
+    float w = u_p.y, s3 = 1.0;
+    for(int i=0;i<10;i++){
+      if(i>=u_iter) break;
+      vec3 a = mod(q*s3 + 1.0, 2.0) - 1.0;
+      vec3 t = vec3(w) - abs(a);                         // > 0 where the coordinate is in the middle third
+      float hi = max(t.x,max(t.y,t.z)), lo = min(t.x,min(t.y,t.z)), mid = t.x + t.y + t.z - hi - lo;
+      float c = -1e9;
+      if(((pat    ) & 1) == 0) c = max(c, -hi);          // m = 0: all outer (corners)
+      if(((pat>>1) & 1) == 0) c = max(c, min(hi, -mid)); // m = 1: edges
+      if(((pat>>2) & 1) == 0) c = max(c, min(mid, -lo)); // m = 2: face centres
+      if(((pat>>3) & 1) == 0) c = max(c, lo);            // m = 3: the centre
+      d = max(d, c/s3);
+      orb = min(orb, vec4(abs(a)*0.5, dot(a,a)*0.2));
+      s3 *= 3.0;
+    }
+    trap = orb;
+    return d;
+#else
     // Layered triply-periodic minimal surfaces (12 gyroid, 13 Schwarz P, 14 Schwarz D, 15 Neovius).
     // Each octave adds a thinner shell at a higher frequency; the union of the shells is the foam.
     vec3 q = (u_xf==1) ? (u_rot*p + u_sh) : p;
@@ -213,7 +308,7 @@ float map(vec3 p){
     }
     trap = orb;
     return max(d, length(p) - u_p.w);        // clip to a ball of radius u_p.w
-  }
+#endif
 }
 
 vec3 calcNormal(vec3 p, float e){

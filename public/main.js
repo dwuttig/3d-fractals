@@ -42,7 +42,16 @@ function program(vs, fs) {
   p.u = (n) => (n in cache ? cache[n] : (cache[n] = gl.getUniformLocation(p, n)));
   return p;
 }
-const traceProg = program(VERT, FRAG_TRACE);
+// One small program per formula (compiled on first use): a single shader holding every formula took ~1 minute to compile.
+const traceProgs = new Map();
+function traceProgFor(f) {
+  let p = traceProgs.get(f);
+  if (!p) {
+    p = program(VERT, FRAG_TRACE.replace('#version 300 es', '#version 300 es\n#define FORMULA ' + f));
+    traceProgs.set(f, p);
+  }
+  return p;
+}
 const dispProg = program(VERT, FRAG_DISPLAY);
 const vao = gl.createVertexArray();
 
@@ -138,6 +147,64 @@ const FORMULAS = [
       { label: 'Radius', min: 0.5, max: 6, step: 0.001, def: 1.6 },
     ],
     cam: { yaw: 0.6, pitch: 0.3, dist: 4.6, target: [0, 0, 0] } },
+  { name: 'Quaternion cubic Julia', iter: 10, steps: 250,
+    params: [
+      { label: 'c.x', min: -1, max: 1, step: 0.001, def: 0.3 },
+      { label: 'c.y', min: -1, max: 1, step: 0.001, def: -0.2 },
+      { label: 'c.z', min: -1, max: 1, step: 0.001, def: 0.1 },
+      { label: 'c.w', min: -1, max: 1, step: 0.001, def: 0.2 },
+    ],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 3.2, target: [0, 0, 0] } },
+  { name: 'Quaternion Mandelbrot', iter: 12, steps: 250,
+    params: [
+      { label: 'w slice', min: -1, max: 1, step: 0.001, def: 0 },
+      { label: 'Power (2-3)', min: 2, max: 3, step: 1, def: 2 },
+    ],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 3.4, target: [0, 0, 0] } },
+  { name: 'Box-fold bulb', iter: 10, steps: 300,
+    params: [
+      { label: 'Box limit', min: 0.4, max: 1.3, step: 0.001, def: 1.0 },
+      { label: 'Scale', min: 0.6, max: 1.4, step: 0.001, def: 1.0 },
+    ],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 9.0, target: [0, 0, 0] } },
+  { name: 'Mandelbar bulb', iter: 9, steps: 300,
+    params: [{ label: 'Power', min: 2, max: 12, step: 0.01, def: 8 }],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 2.8, target: [0, 0, 0] } },
+  { name: 'Sphere flake', iter: 6, steps: 200,
+    params: [{ label: 'Child ratio', min: 0.25, max: 0.45, step: 0.0005, def: 0.3333 }],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 4.6, target: [0, 0, 0] } },
+  { name: 'Vicsek fractal', iter: 4, steps: 200,
+    params: [
+      { label: 'Pattern (1-14)', min: 1, max: 14, step: 1, def: 12 },
+      { label: 'Width', min: 0.2, max: 0.5, step: 0.001, def: 0.3333 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 4.0, target: [0, 0, 0] } },
+  { name: 'Mosely snowflake', iter: 4, steps: 200,
+    params: [
+      { label: 'Pattern (1-14)', min: 1, max: 14, step: 1, def: 6 },
+      { label: 'Width', min: 0.2, max: 0.5, step: 0.001, def: 0.3333 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 4.0, target: [0, 0, 0] } },
+  { name: 'Cube frame', iter: 4, steps: 200,
+    params: [
+      { label: 'Pattern (1-14)', min: 1, max: 14, step: 1, def: 2 },
+      { label: 'Width', min: 0.2, max: 0.5, step: 0.001, def: 0.3333 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 4.0, target: [0, 0, 0] } },
+  { name: 'Window sponge', iter: 4, steps: 200,
+    params: [
+      { label: 'Pattern (1-14)', min: 1, max: 14, step: 1, def: 11 },
+      { label: 'Width', min: 0.2, max: 0.5, step: 0.001, def: 0.3333 },
+    ],
+    cam: { yaw: 0.6, pitch: 0.4, dist: 4.0, target: [0, 0, 0] } },
+  { name: 'Quaternion quartic Julia', iter: 10, steps: 250,
+    params: [
+      { label: 'c.x', min: -1, max: 1, step: 0.001, def: 0.3 },
+      { label: 'c.y', min: -1, max: 1, step: 0.001, def: -0.2 },
+      { label: 'c.z', min: -1, max: 1, step: 0.001, def: 0.1 },
+      { label: 'c.w', min: -1, max: 1, step: 0.001, def: 0.2 },
+    ],
+    cam: { yaw: 0.5, pitch: 0.3, dist: 3.2, target: [0, 0, 0] } },
 ];
 const LOOK_DEFAULT = {
   fov: 55, aperture: 0.03, focus: 1.0,
@@ -216,7 +283,7 @@ function dynRebase(keepSelection) {
 // Every formula has its own parameters plus three shared extras that reshape it:
 // Twist / Tilt rotate the space every iteration; Shift translates it (Julia offset for Mandelbox / Mandelbulb).
 function paramDefs(fi) {
-  const julia = fi === 2 || fi === 4 || fi === 9 || fi === 10;
+  const julia = [2, 4, 9, 10, 18, 19].includes(fi);
   return [
     ...FORMULAS[fi].params,
     { label: 'Twist', min: -0.6, max: 0.6, step: 0.001, def: 0, dyn: false },
@@ -542,6 +609,94 @@ function deExtra(p) {
   }
   return (Math.hypot(x, y, z) - q[0]) / sc;
 }
+const qsqJ = (z) => { const v2 = z[1] * z[1] + z[2] * z[2] + z[3] * z[3]; return [z[0] * z[0] - v2, 2 * z[0] * z[1], 2 * z[0] * z[2], 2 * z[0] * z[3]]; };
+const qcubeJ = (z) => {
+  const v2 = z[1] * z[1] + z[2] * z[2] + z[3] * z[3], a = 3 * z[0] * z[0] - v2;
+  return [z[0] * (z[0] * z[0] - 3 * v2), a * z[1], a * z[2], a * z[3]];
+};
+function deMore2(p) {
+  const q = s.p, n = s.iter, xf = xfState(), f = s.formula;
+  let x = p[0], y = p[1], z = p[2];
+  if (f === 16 || f === 25 || f === 17) {                    // quaternion Julia (cubic / quartic) and Mandelbrot
+    if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
+    const mand = f === 17, pw = mand ? (q[1] > 2.5 ? 3 : 2) : (f === 16 ? 3 : 4);
+    const c = mand ? [x, y, z, q[0]] : [q[0], q[1], q[2], q[3]];
+    let zz = mand ? [0, 0, 0, 0] : [x, y, z, 0], dr = 1, r = 0;
+    for (let i = 0; i < n; i++) {
+      r = Math.hypot(zz[0], zz[1], zz[2], zz[3]);
+      if (r > 2) break;
+      dr = pw * Math.pow(r, pw - 1) * dr + (mand ? 1 : 0);
+      const pz = pw === 2 ? qsqJ(zz) : pw === 3 ? qcubeJ(zz) : qsqJ(qsqJ(zz));
+      zz = [pz[0] + c[0], pz[1] + c[1], pz[2] + c[2], pz[3] + c[3]];
+    }
+    r = Math.hypot(zz[0], zz[1], zz[2], zz[3]);
+    return Math.abs(0.5 * Math.log(Math.max(r, 1e-6)) * r / Math.max(dr, 1e-30));
+  }
+  if (f === 18 || f === 19) {                                // box-fold bulb, Mandelbar bulb
+    let zx = x, zy = y, zz = z, dr = 1, r = 0;
+    const jx = x + xf.sx, jy = y + xf.sy, jz = z + xf.sz;
+    if (f === 19) {
+      const pw = q[0];
+      for (let i = 0; i < n; i++) {
+        r = Math.hypot(zx, zy, zz);
+        if (r > 2) break;
+        if (xf.on) { [zx, zy, zz] = xfp(xf, zx, zy, zz, false); }
+        zy = -zy;
+        const th = Math.acos(clamp(zz / r, -1, 1)) * pw, ph = Math.atan2(zy, zx) * pw;
+        dr = Math.pow(r, pw - 1) * pw * dr + 1;
+        const zr = Math.pow(r, pw);
+        zx = zr * Math.sin(th) * Math.cos(ph) + jx; zy = zr * Math.sin(ph) * Math.sin(th) + jy; zz = zr * Math.cos(th) + jz;
+      }
+    } else {
+      const L = q[0], k = q[1];
+      for (let i = 0; i < n; i++) {
+        if (xf.on) { [zx, zy, zz] = xfp(xf, zx, zy, zz, false); }
+        zx = clamp(zx, -L, L) * 2 - zx; zy = clamp(zy, -L, L) * 2 - zy; zz = clamp(zz, -L, L) * 2 - zz;
+        r = Math.hypot(zx, zy, zz);
+        if (r > 4) break;
+        dr = 2 * k * r * dr + 1;
+        const nx = zx * zx - zy * zy - zz * zz, ny = 2 * zx * zz, nz = 2 * zx * zy;
+        zx = k * nx + jx; zy = k * ny + jy; zz = k * nz + jz;
+      }
+      r = Math.hypot(zx, zy, zz);
+    }
+    return Math.abs(0.5 * Math.log(Math.max(r, 1e-6)) * r / dr);
+  }
+  if (f === 20) {                                            // sphere flake
+    if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
+    const k = q[0], fk = 1 / k;
+    let sc = 1, t, d = Math.hypot(x, y, z) - 1;
+    for (let i = 0; i < Math.min(n, 12); i++) {
+      x = Math.abs(x); y = Math.abs(y); z = Math.abs(z);
+      if (x < y) { t = x; x = y; y = t; }
+      if (x < z) { t = x; x = z; z = t; }
+      if (y < z) { t = y; y = z; z = t; }
+      x = x * fk - (1 + k) * fk; y *= fk; z *= fk;
+      sc *= fk;
+      d = Math.min(d, (Math.hypot(x, y, z) - 1) / sc);
+    }
+    return deSigned ? d : Math.abs(d);
+  }
+  // 21..24: cube carver
+  if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
+  const bx = Math.abs(x) - 1, by = Math.abs(y) - 1, bz = Math.abs(z) - 1;
+  let d = Math.hypot(Math.max(bx, 0), Math.max(by, 0), Math.max(bz, 0)) + Math.min(Math.max(bx, Math.max(by, bz)), 0);
+  const pat = Math.floor(q[0] + 0.5), w = q[1];
+  let s3 = 1;
+  for (let i = 0; i < Math.min(n, 10); i++) {
+    const tx = w - Math.abs(mod2(x * s3 + 1) - 1), ty = w - Math.abs(mod2(y * s3 + 1) - 1), tz = w - Math.abs(mod2(z * s3 + 1) - 1);
+    const hi = Math.max(tx, ty, tz), lo = Math.min(tx, ty, tz), mid = tx + ty + tz - hi - lo;
+    let c = -1e9;
+    if (!(pat & 1)) c = Math.max(c, -hi);
+    if (!(pat & 2)) c = Math.max(c, Math.min(hi, -mid));
+    if (!(pat & 4)) c = Math.max(c, Math.min(mid, -lo));
+    if (!(pat & 8)) c = Math.max(c, lo);
+    d = Math.max(d, c / s3);
+    s3 *= 3;
+  }
+  return Math.abs(d);
+}
+
 let deSigned = false;   // true: foams return a signed distance (negative inside the solid)
 function deMore(p) {
   const q = s.p, n = s.iter, xf = xfState(), f = s.formula;
@@ -630,6 +785,7 @@ function deMore(p) {
   return deSigned ? d : Math.abs(d);
 }
 function de(p) {
+  if (s.formula >= 16) return deMore2(p);
   if (s.formula >= 6) return deMore(p);
   if (s.formula >= 2) return deExtra(p);
   let x = p[0], y = p[1], z = p[2], sc = 1;
@@ -710,6 +866,10 @@ function boundFor() {
     case 9: { const xf = xfState(); return (s.p[0] >= 6 ? 1.5 : 2.1) + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
     case 10: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
     case 12: case 13: case 14: case 15: return s.p[3] + 0.05;   // foams are clipped to their ball
+    case 16: case 17: case 25: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz); }
+    case 19: { const xf = xfState(); return (s.p[0] >= 6 ? 1.5 : 2.1) + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
+    case 20: { const xf = xfState(); return 1 + 2 * s.p[0] / (1 - s.p[0]) + 0.1 + Math.hypot(xf.sx, xf.sy, xf.sz); }
+    case 21: case 22: case 23: case 24: { const xf = xfState(); return 1.75 + Math.hypot(xf.sx, xf.sy, xf.sz); }
     case 11: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz); }
     default: return 0;
   }
@@ -807,10 +967,9 @@ function renderBand(preview) {
   gl.blendColor(0, 0, 0, 1 / (pass + 1));
   gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
 
-  const P = traceProg; gl.useProgram(P);
+  const P = traceProgFor(s.formula); gl.useProgram(P);
   gl.uniform2f(P.u('u_res'), tw, th);
   gl.uniform1i(P.u('u_frame'), pass);
-  gl.uniform1i(P.u('u_formula'), s.formula);
   gl.uniform1i(P.u('u_iter'), s.iter);
   gl.uniform1i(P.u('u_steps'), preview ? Math.min(s.steps, 200) : s.steps);
   gl.uniform1i(P.u('u_preview'), preview ? 1 : 0);
@@ -871,8 +1030,13 @@ function updatePreviewScale() {
   const sc = Math.sqrt(9 / (msPerMpx * (outW * outH) / 1e6));
   previewScale = [0.25, 0.35, 0.5, 0.7, 1].filter((v) => v <= sc).pop() ?? 0.25;
 }
+let compileNotice = false;
 function loop(now) {
   requestAnimationFrame(loop);
+  if (!traceProgs.has(s.formula)) {   // first use of a formula: show a notice for one frame, then compile
+    if (!compileNotice) { compileNotice = true; status.textContent = 'Compiling shader…'; return; }
+    compileNotice = false;
+  }
   const rawDt = now - lastT;
   const dt = Math.min(0.1, rawDt / 1000); lastT = now;
   // slow frame rate with an idle GPU -> do more work per frame (never beyond MAX_BUDGET_MS)
