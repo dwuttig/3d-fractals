@@ -32,6 +32,12 @@ float rnd(){ rs=pcg(rs); return float(rs)*(1.0/4294967295.0); }
 
 vec4 trap;
 
+// Cone of height 1 (base at y = 0, apex at y = 1) and base radius Rb; exact in the meridian plane.
+float coneSd(vec3 q, float Rb){
+  float rho = length(q.xz);
+  return max(-q.y, (rho + q.y*Rb - Rb)/sqrt(1.0 + Rb*Rb));
+}
+
 // quaternion with the real part in .x
 vec4 qsq(vec4 z){ return vec4(z.x*z.x - dot(z.yzw,z.yzw), 2.0*z.x*z.yzw); }
 vec4 qcube(vec4 z){ float v2 = dot(z.yzw,z.yzw); return vec4(z.x*(z.x*z.x - 3.0*v2), (3.0*z.x*z.x - v2)*z.yzw); }
@@ -286,6 +292,45 @@ float map(vec3 p){
     }
     trap = orb;
     return d;
+#elif FORMULA==26
+    // Romanesco: a cone whose surface carries rings of florets -- smaller copies of the whole -- placed on a
+    // golden-angle spiral. Row k sits at distance u_k = 0.97 * rho^k from the apex (log spacing keeps the florets
+    // similar in size to their neighbours); each row has M florets, rotated by alpha relative to the row before.
+    // Every level we step into the nearest floret of the two nearest rows and repeat.
+    // u_p = (cone radius, floret fill, columns M, spiral angle)
+    vec3 pp = (u_xf==1) ? (u_rot*p + u_sh) : p;
+    vec3 q = pp*0.5 + vec3(0.0, 0.5, 0.0);           // cone: base y = 0, apex y = 1 (2 world units tall)
+    float Rb = u_p.x, fill = u_p.y, M = max(u_p.z, 3.0), alpha = u_p.w;
+    float delta = 6.2831853/M;
+    float rho = clamp(1.0 - 1.5707963*fill/M, 0.5, 0.97), lnr = log(rho);
+    float d = 1e9, scl = 1.0, tag = 0.0, nl = float(max(u_iter,1));
+    for(int lvl=0; lvl<7; lvl++){
+      float dl = coneSd(q, Rb)/scl;
+      if(dl < d){ d = dl; tag = float(lvl)/nl; }
+      if(lvl >= u_iter) break;
+      float u = max(1.0 - q.y, 1e-4);
+      float theta = atan(q.z, q.x);
+      float k0 = floor(log(u/0.97)/lnr);
+      float best = 1e9, bs = 1.0; vec3 bq = q;
+      for(int a=0;a<2;a++){
+        float k = max(k0 + float(a), 0.0);
+        float uk = 0.97*pow(rho, k), yk = 1.0 - uk, rk = Rb*uk, fk = 3.1415927*uk*fill/M;
+        float phi = k*alpha, m0 = floor((theta - phi)/delta);
+        for(int b=0;b<2;b++){
+          float th = phi + (m0 + float(b))*delta;
+          float ct = cos(th), st = sin(th);
+          vec3 nrm = normalize(vec3(ct, Rb + 0.9, st));      // floret axis: the surface normal tilted up towards the apex
+          vec3 w = vec3(-st, 0.0, ct);
+          vec3 dd = q - vec3(rk*ct, yk, rk*st);
+          vec3 ql = vec3(dot(dd,w), dot(dd,nrm), dot(dd, cross(w,nrm)))/fk;
+          float dc = coneSd(ql, Rb)*fk;
+          if(dc < best){ best = dc; bq = ql; bs = fk; }
+        }
+      }
+      q = bq; scl /= bs;
+    }
+    trap = vec4(vec3(tag*0.5), (1.0 - tag)*0.4);
+    return 2.0*0.6*d;                                        // x2: world scale, x0.6: safety (only the nearest floret is followed)
 #else
     // Layered triply-periodic minimal surfaces (12 gyroid, 13 Schwarz P, 14 Schwarz D, 15 Neovius).
     // Each octave adds a thinner shell at a higher frequency; the union of the shells is the foam.
