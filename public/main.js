@@ -382,7 +382,7 @@ canvas.addEventListener('pointermove', (e) => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
   const sens = 0.0025 * (s.fov / 55);
-  turn(-dx * sens, -dy * sens, 0);
+  turn(dx * sens, dy * sens, 0);   // inverted: drag the scene, not the camera
   markDirty();
 });
 canvas.addEventListener('wheel', (e) => {
