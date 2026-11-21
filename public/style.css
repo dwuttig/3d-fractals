@@ -23,3 +23,4 @@ button{cursor:pointer}button:hover{background:#33334a}
 #panel.min #body{display:none}
 input[type=checkbox]{justify-self:start;accent-color:#e0a95c}
 button.on{background:#e0a95c;color:#111;border-color:#e0a95c}button.on:hover{background:#f0b96c}
+.row.pcheck{grid-template-columns:96px 1fr 44px 16px}.row.pcheck input[type=checkbox]{margin:0;width:14px;height:14px}

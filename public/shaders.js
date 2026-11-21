@@ -16,6 +16,9 @@ uniform vec2  u_res;
 uniform int   u_frame;
 uniform int   u_formula, u_iter, u_steps, u_preview;
 uniform vec4  u_p;
+uniform mat3  u_rot;     // twist/tilt rotation applied every iteration
+uniform vec3  u_sh;      // shift / Julia offset
+uniform int   u_xf;      // 1 when rotation or shift is non-zero
 uniform vec3  u_ro, u_right, u_up, u_fwd;
 uniform float u_f, u_pix, u_aperture, u_focus, u_dist, u_bound;
 uniform float u_ao, u_aoRad, u_fog, u_light, u_shadow;
@@ -35,6 +38,7 @@ float map(vec3 p){
     // Apollonian-style sphere inversion in a periodic lattice
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
+      if(u_xf==1) p = u_rot*p + u_sh;
       p = -1.0 + 2.0*fract(0.5*p+0.5);
       float r2 = dot(p,p);
       orb = min(orb, vec4(abs(p), r2));
@@ -48,6 +52,7 @@ float map(vec3 p){
     vec3 cs = vec3(u_p.y, u_p.z, u_p.y);
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
+      if(u_xf==1) p = u_rot*p + u_sh;
       p = 2.0*clamp(p,-cs,cs) - p;
       float r2 = dot(p,p);
       orb = min(orb, vec4(abs(p), r2));
@@ -59,10 +64,11 @@ float map(vec3 p){
     return 0.7*max(rxy-u_p.w, abs(rxy*p.z)/length(p))/sc;
   } else if(u_formula==2){
     // Mandelbox: box fold + sphere fold + scale/translate
-    vec3 p0 = p; float dr = 1.0;
+    vec3 p0 = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0;
     float minR2 = u_p.y*u_p.y, fixR2 = u_p.z*u_p.z;
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
+      if(u_xf==1) p = u_rot*p;
       p = clamp(p,-1.0,1.0)*2.0 - p;
       float r2 = dot(p,p);
       if(r2 < minR2){ float t = fixR2/minR2; p *= t; dr *= t; }
@@ -79,6 +85,7 @@ float map(vec3 p){
     float s = 1.0;
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
+      if(u_xf==1) p = u_rot*p + u_sh;
       vec3 a = mod(p*s, 2.0) - 1.0;
       s *= 3.0;
       vec3 r = abs(1.0 - 3.0*abs(a));
@@ -91,17 +98,18 @@ float map(vec3 p){
     return d;
   } else if(u_formula==4){
     // Mandelbulb
-    vec3 z = p; float dr = 1.0, r = 0.0, pw = u_p.x;
+    vec3 z = p, pc = p + (u_xf==1 ? u_sh : vec3(0.0)); float dr = 1.0, r = 0.0, pw = u_p.x;
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
       r = length(z);
       if(r > 2.0) break;
+      if(u_xf==1) z = u_rot*z;
       float theta = acos(clamp(z.z/r,-1.0,1.0))*pw;
       float phi = atan(z.y,z.x)*pw;
       dr = pow(r,pw-1.0)*pw*dr + 1.0;
       float zr = pow(r,pw);
       orb = min(orb, vec4(abs(z)*0.5, r*r*0.5));
-      z = zr*vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + p;
+      z = zr*vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + pc;
     }
     trap = orb;
     return 0.5*log(max(r,1e-6))*r/dr;
@@ -110,6 +118,7 @@ float map(vec3 p){
     vec3 z = p;
     for(int i=0;i<20;i++){
       if(i>=u_iter) break;
+      if(u_xf==1) z = u_rot*z + u_sh;
       if(z.x+z.y < 0.0) z.xy = -z.yx;
       if(z.x+z.z < 0.0) z.xz = -z.zx;
       if(z.y+z.z < 0.0) z.zy = -z.yz;

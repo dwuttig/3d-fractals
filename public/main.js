@@ -142,12 +142,30 @@ let currentLook = -1;
 
 // Dynamic mode: formula parameters drift slowly around the values they had when it was switched on.
 // Switching it off simply stops the drift, so the parameters stay wherever they are.
-const dyn = { on: false, base: [], t0: 0 };
-function dynRebase() { dyn.base = [...s.p]; dyn.t0 = performance.now(); }
+const dyn = { on: false, base: [], t0: [], use: [] };
+function dynRebase(keepSelection) {
+  const now = performance.now();
+  dyn.base = [...s.p];
+  dyn.t0 = s.p.map(() => now);
+  if (!keepSelection) dyn.use = paramDefs(s.formula).map((q) => q.dyn !== false);   // which parameters Dynamic mode may move
+}
+
+// Every formula has its own parameters plus three shared extras that reshape it:
+// Twist / Tilt rotate the space every iteration; Shift translates it (Julia offset for Mandelbox / Mandelbulb).
+function paramDefs(fi) {
+  const julia = fi === 2 || fi === 4;
+  return [
+    ...FORMULAS[fi].params,
+    { label: 'Twist', min: -0.6, max: 0.6, step: 0.001, def: 0, dyn: false },
+    { label: 'Tilt', min: -0.6, max: 0.6, step: 0.001, def: 0, dyn: false },
+    { label: julia ? 'Julia offset' : 'Shift', min: julia ? -0.5 : -0.15, max: julia ? 0.5 : 0.15, step: 0.001, def: 0, dyn: false },
+  ];
+}
 function stepDynamic(now) {
   if (!dyn.on) return false;
-  const t = (now - dyn.t0) / 1000;
-  FORMULAS[s.formula].params.forEach((q, i) => {
+  paramDefs(s.formula).forEach((q, i) => {
+    if (!dyn.use[i]) return;
+    const t = (now - dyn.t0[i]) / 1000;
     const amp = 0.015 * s.dynStrength * (q.max - q.min); // 1.5% of the slider range at strength 1: a gentle morph
     const period = 24 + 9 * i;                           // seconds; a different slow rhythm per parameter
     const wave = 0.7 * Math.sin((2 * Math.PI * t) / period) + 0.3 * Math.sin((2 * Math.PI * t) / (period * 0.618));
@@ -174,6 +192,13 @@ function slider(group, label, key, min, max, step, opts = {}) {
   const fmt = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
   val.textContent = fmt(+inp.value);
   inp.addEventListener('input', () => { const v = +inp.value; set(v); val.textContent = fmt(v); (opts.display ? needDisplay() : markDirty()); });
+  if (opts.check) {
+    row.classList.add('pcheck');
+    const cb = document.createElement('input'); cb.type = 'checkbox';
+    cb.title = 'Include in Dynamic mode'; cb.checked = !!opts.check.get();
+    cb.addEventListener('change', () => { opts.check.set(cb.checked); cb.blur(); });
+    row.appendChild(cb);
+  }
   group.appendChild(row);
   return { inp, val };
 }
@@ -212,8 +237,18 @@ function buildFractalUI() {
   select(gFractal, 'Formula', FORMULAS.map((f, i) => ({ label: f.name, value: i })), () => s.formula, (v) => setFormula(+v));
   slider(gFractal, 'Iterations', 'iter', 2, 20, 1);
   gParams.innerHTML = '';
-  refs.params = FORMULAS[s.formula].params.map((q, i) =>
-    slider(gParams, q.label, null, q.min, q.max, q.step, { get: () => s.p[i], set: (v) => { s.p[i] = v; if (dyn.on) dyn.base[i] = v; } }));
+  const hint = document.createElement('div'); hint.className = 'hint';
+  hint.textContent = 'Tick a value to include it in Dynamic mode';
+  gParams.appendChild(hint);
+  refs.params = paramDefs(s.formula).map((q, i) =>
+    slider(gParams, q.label, null, q.min, q.max, q.step, {
+      get: () => s.p[i],
+      set: (v) => { s.p[i] = v; if (dyn.on) dyn.base[i] = v; },
+      check: {
+        get: () => dyn.use[i],
+        set: (v) => { dyn.use[i] = v; if (v) { dyn.base[i] = s.p[i]; dyn.t0[i] = performance.now(); } },
+      },
+    }));
   gFractal.appendChild(gParams);
   slider(gFractal, 'Max steps', 'steps', 50, 800, 10);
   slider(gFractal, 'Dynamic strength', 'dynStrength', 0.1, 5, 0.01, { display: true });
@@ -222,13 +257,13 @@ function buildFractalUI() {
   const btn = row.firstChild;
   const label = () => { btn.textContent = dyn.on ? 'Dynamic mode: ON' : 'Dynamic mode: off'; btn.classList.toggle('on', dyn.on); };
   label();
-  btn.onclick = () => { dyn.on = !dyn.on; if (dyn.on) dynRebase(); label(); btn.blur(); markDirty(); };
+  btn.onclick = () => { dyn.on = !dyn.on; if (dyn.on) dynRebase(true); label(); btn.blur(); markDirty(); };
   gFractal.appendChild(row);
 }
 function setFormula(i) {   // manual formula switch from the dropdown: keeps the current look
   s.formula = i;
   const f = FORMULAS[i];
-  s.p = f.params.map((q) => q.def); s.iter = f.iter; s.steps = f.steps;
+  s.p = paramDefs(i).map((q) => q.def); s.iter = f.iter; s.steps = f.steps;
   dynRebase();
   setCamFromOrbit(f.cam);
   buildFractalUI(); markDirty();
@@ -246,7 +281,7 @@ function applyPreset(i, full) {
   Object.assign(s, LOOK_DEFAULT, pr.look || {});
   if (full) { s.res = 1; s.target = 400; s.dynStrength = 1; }
   s.formula = pr.formula;
-  s.p = pr.p ? [...pr.p] : f.params.map((q) => q.def);
+  s.p = paramDefs(pr.formula).map((q, i) => (pr.p && i < pr.p.length ? pr.p[i] : q.def));
   s.iter = pr.iter ?? f.iter; s.steps = pr.steps ?? f.steps;
   dynRebase();
   setCamFromOrbit({ ...f.cam, ...(pr.cam || {}) });
@@ -362,13 +397,38 @@ const fr = (x) => x - Math.floor(x);
 // CPU copy of the shader's distance estimator (distance only, no orbit trap).
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const mod2 = (v) => v - 2 * Math.floor(v / 2);
+
+// Twist / Tilt / Shift as a rotation matrix + translation (same numbers go to the shader).
+let xfCache = { key: '', v: null };
+function xfState() {
+  const nb = FORMULAS[s.formula].params.length;
+  const tw = s.p[nb] || 0, ti = s.p[nb + 1] || 0, sh = s.p[nb + 2] || 0;
+  const key = tw + ',' + ti + ',' + sh;
+  if (xfCache.key === key) return xfCache.v;
+  const c1 = Math.cos(tw), s1 = Math.sin(tw), c2 = Math.cos(ti), s2 = Math.sin(ti);
+  const Ry = [c1, 0, s1, 0, 1, 0, -s1, 0, c1], Rx = [1, 0, 0, 0, c2, -s2, 0, s2, c2];
+  const m = new Array(9).fill(0);                          // m = Rx * Ry (row-major)
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) for (let k = 0; k < 3; k++) m[r * 3 + c] += Rx[r * 3 + k] * Ry[k * 3 + c];
+  const v = {
+    on: tw !== 0 || ti !== 0 || sh !== 0, m, sx: sh, sy: sh * 0.6, sz: -sh * 0.4,
+    glm: [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]],   // column-major for WebGL
+  };
+  xfCache = { key, v };
+  return v;
+}
+const xfp = (xf, x, y, z, shift) => [
+  xf.m[0] * x + xf.m[1] * y + xf.m[2] * z + (shift ? xf.sx : 0),
+  xf.m[3] * x + xf.m[4] * y + xf.m[5] * z + (shift ? xf.sy : 0),
+  xf.m[6] * x + xf.m[7] * y + xf.m[8] * z + (shift ? xf.sz : 0),
+];
 function deExtra(p) {
-  const q = s.p, n = s.iter;
+  const q = s.p, n = s.iter, xf = xfState();
   let x = p[0], y = p[1], z = p[2];
   if (s.formula === 2) {                       // Mandelbox
-    const x0 = x, y0 = y, z0 = z, minR2 = q[1] * q[1], fixR2 = q[2] * q[2];
+    const x0 = x + xf.sx, y0 = y + xf.sy, z0 = z + xf.sz, minR2 = q[1] * q[1], fixR2 = q[2] * q[2];
     let dr = 1;
     for (let i = 0; i < n; i++) {
+      if (xf.on) { [x, y, z] = xfp(xf, x, y, z, false); }
       x = clamp(x, -1, 1) * 2 - x; y = clamp(y, -1, 1) * 2 - y; z = clamp(z, -1, 1) * 2 - z;
       const r2 = x * x + y * y + z * z;
       if (r2 < minR2) { const t = fixR2 / minR2; x *= t; y *= t; z *= t; dr *= t; }
@@ -383,6 +443,7 @@ function deExtra(p) {
     let d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, Math.max(qy, qz)), 0);
     let sc = 1;
     for (let i = 0; i < n; i++) {
+      if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
       const ax = mod2(x * sc) - 1, ay = mod2(y * sc) - 1, az = mod2(z * sc) - 1;
       sc *= 3;
       const rx = Math.abs(1 - 3 * Math.abs(ax)), ry = Math.abs(1 - 3 * Math.abs(ay)), rz = Math.abs(1 - 3 * Math.abs(az));
@@ -393,19 +454,21 @@ function deExtra(p) {
   }
   if (s.formula === 4) {                       // Mandelbulb
     let zx = x, zy = y, zz = z, dr = 1, r = 0;
-    const pw = q[0];
+    const pw = q[0], jx = x + xf.sx, jy = y + xf.sy, jz = z + xf.sz;
     for (let i = 0; i < n; i++) {
       r = Math.hypot(zx, zy, zz);
       if (r > 2) break;
+      if (xf.on) { [zx, zy, zz] = xfp(xf, zx, zy, zz, false); }
       const th = Math.acos(clamp(zz / r, -1, 1)) * pw, ph = Math.atan2(zy, zx) * pw;
       dr = Math.pow(r, pw - 1) * pw * dr + 1;
       const zr = Math.pow(r, pw);
-      zx = zr * Math.sin(th) * Math.cos(ph) + x; zy = zr * Math.sin(ph) * Math.sin(th) + y; zz = zr * Math.cos(th) + z;
+      zx = zr * Math.sin(th) * Math.cos(ph) + jx; zy = zr * Math.sin(ph) * Math.sin(th) + jy; zz = zr * Math.cos(th) + jz;
     }
     return Math.abs(0.5 * Math.log(Math.max(r, 1e-6)) * r / dr);
   }
   let sc = 1;                                  // Sierpinski tetrahedron
   for (let i = 0; i < n; i++) {
+    if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
     if (x + y < 0) { const t = x; x = -y; y = -t; }
     if (x + z < 0) { const t = x; x = -z; z = -t; }
     if (y + z < 0) { const t = y; y = -z; z = -t; }
@@ -416,9 +479,10 @@ function deExtra(p) {
 function de(p) {
   if (s.formula >= 2) return deExtra(p);
   let x = p[0], y = p[1], z = p[2], sc = 1;
-  const n = s.iter, q = s.p;
+  const n = s.iter, q = s.p, xf = xfState();
   if (s.formula === 0) {
     for (let i = 0; i < n; i++) {
+      if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
       x = -1 + 2 * fr(0.5 * x + 0.5); y = -1 + 2 * fr(0.5 * y + 0.5); z = -1 + 2 * fr(0.5 * z + 0.5);
       const k = q[0] / Math.max(x * x + y * y + z * z, 1e-30);
       x *= k; y *= k; z *= k; sc *= k;
@@ -427,6 +491,7 @@ function de(p) {
   }
   const cx = q[1], cy = q[2];
   for (let i = 0; i < n; i++) {
+    if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
     x = 2 * Math.max(-cx, Math.min(cx, x)) - x;
     y = 2 * Math.max(-cy, Math.min(cy, y)) - y;
     z = 2 * Math.max(-cx, Math.min(cx, z)) - z;
@@ -474,8 +539,8 @@ function updateCamInfo() {
 function boundFor() {
   switch (s.formula) {
     case 3: return 1.75;                                   // Menger sponge: cube, corner at sqrt(3)
-    case 4: return s.p[0] >= 6 ? 1.5 : 2.1;                // Mandelbulb
-    case 5: return 1.75 + s.p[0] * Math.pow(0.5, s.iter);  // Sierpinski tetrahedron + blob radius
+    case 4: { const xf = xfState(); return (s.p[0] >= 6 ? 1.5 : 2.1) + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }   // Mandelbulb (+ Julia offset)
+    case 5: return xfState().on ? 0 : 1.75 + s.p[0] * Math.pow(0.5, s.iter);   // Sierpinski tetrahedron + blob radius
     default: return 0;
   }
 }
@@ -579,8 +644,12 @@ function renderBand(preview) {
   gl.uniform1i(P.u('u_iter'), s.iter);
   gl.uniform1i(P.u('u_steps'), preview ? Math.min(s.steps, 200) : s.steps);
   gl.uniform1i(P.u('u_preview'), preview ? 1 : 0);
-  const pp = [...s.p, 0, 0, 0, 0].slice(0, 4);
+  const pp = [...s.p.slice(0, FORMULAS[s.formula].params.length), 0, 0, 0, 0].slice(0, 4);
   gl.uniform4f(P.u('u_p'), pp[0], pp[1], pp[2], pp[3]);
+  const xf = xfState();
+  gl.uniformMatrix3fv(P.u('u_rot'), false, xf.glm);
+  gl.uniform3f(P.u('u_sh'), xf.sx, xf.sy, xf.sz);
+  gl.uniform1i(P.u('u_xf'), xf.on ? 1 : 0);
   gl.uniform3fv(P.u('u_ro'), b.pos); gl.uniform3fv(P.u('u_right'), b.right);
   gl.uniform3fv(P.u('u_up'), b.up); gl.uniform3fv(P.u('u_fwd'), b.fwd);
   gl.uniform1f(P.u('u_f'), f);
