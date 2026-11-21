@@ -7,7 +7,23 @@ if (!gl || !gl.getExtension('EXT_color_buffer_float')) { fail(); return; }
 const hasFloatBlend = !!gl.getExtension('EXT_float_blend');
 const ACCUM_FORMAT = hasFloatBlend ? gl.RGBA32F : gl.RGBA16F;
 const MAX_SIDE = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), 8192);
-const BAND_PIXELS = 700000;           // pixels shaded per animation frame (keeps the GPU watchdog happy)
+// Work per animation frame is sized from measured GPU time (timer queries) so fast GPUs finish whole passes
+// -- or several -- per frame, while slow ones are split into bands that keep the page responsive.
+const timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+const FRAME_BUDGET_MS = 11, MAX_BUDGET_MS = 30;
+let budgetMs = FRAME_BUDGET_MS, frameDtAvg = 16.7;
+let msPerMpx = 0, bandPixels = 700000, pendingQ = null, pendingPx = 0;
+function pollTimer() {
+  if (!pendingQ || !gl.getQueryParameter(pendingQ, gl.QUERY_RESULT_AVAILABLE)) return;
+  if (!gl.getParameter(timerExt.GPU_DISJOINT_EXT)) {
+    const ms = gl.getQueryParameter(pendingQ, gl.QUERY_RESULT) / 1e6;
+    const m = ms / (pendingPx / 1e6);
+    msPerMpx = msPerMpx ? msPerMpx * 0.7 + m * 0.3 : m;
+    bandPixels = Math.max(150000, Math.min(8e6, (budgetMs / msPerMpx) * 1e6));
+  }
+  gl.deleteQuery(pendingQ); pendingQ = null;
+}
+const estMs = (px) => (msPerMpx ? (msPerMpx * px) / 1e6 : budgetMs);
 
 // ---------- GL helpers ----------
 function compile(type, src) {
@@ -249,7 +265,7 @@ slider(gFilm, 'Grain', 'grain', 0, 2, 0.01, { display: true });
 slider(gFilm, 'Vignette', 'vignette', 0, 1.5, 0.01, { display: true });
 
 const gRender = $('#g-render'); gRender.innerHTML = '';
-select(gRender, 'Resolution', [{ label: '1× window', value: 1 }, { label: '1.5×', value: 1.5 }, { label: '2×', value: 2 }, { label: '3×', value: 3 }, { label: '4×', value: 4 }],
+select(gRender, 'Resolution', [{ label: '0.5× (fast draft)', value: 0.5 }, { label: '0.75×', value: 0.75 }, { label: '1× window', value: 1 }, { label: '1.5×', value: 1.5 }, { label: '2×', value: 2 }, { label: '3×', value: 3 }, { label: '4×', value: 4 }],
   () => s.res, (v) => { s.res = +v; markDirty(); });
 slider(gRender, 'Target samples', 'target', 1, 4000, 1, { display: true });
 }
@@ -423,6 +439,16 @@ function updateCamInfo() {
   cam.dist = Math.max(1e-6, cam.dist0 * cam.hit / cam.hit0);
 }
 
+// Radius of a sphere around the origin that contains the whole fractal (0 = unbounded / infinite).
+function boundFor() {
+  switch (s.formula) {
+    case 3: return 1.75;                                   // Menger sponge: cube, corner at sqrt(3)
+    case 4: return s.p[0] >= 6 ? 1.5 : 2.1;                // Mandelbulb
+    case 5: return 1.75 + s.p[0] * Math.pow(0.5, s.iter);  // Sierpinski tetrahedron + blob radius
+    default: return 0;
+  }
+}
+
 function basis() { return { pos: cam.pos, fwd: cam.fwd, up: cam.up, right: norm(cross(cam.fwd, cam.up)) }; }
 
 function turn(yaw, pitch, roll) {
@@ -501,7 +527,7 @@ const hex = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255
 
 // ---------- Rendering ----------
 function renderBand(preview) {
-  const bands = Math.max(1, Math.ceil((tw * th) / BAND_PIXELS));
+  const bands = Math.max(1, Math.ceil((tw * th) / bandPixels));
   if (band >= bands) band = 0;
   const bh = Math.ceil(th / bands);
   const b = basis();
@@ -539,8 +565,12 @@ function renderBand(preview) {
   gl.uniform3f(P.u('u_lightDir'), Math.cos(lp) * Math.sin(ly), Math.sin(lp), Math.cos(lp) * Math.cos(ly));
   gl.uniform3fv(P.u('u_colA'), hex(s.colA)); gl.uniform3fv(P.u('u_colB'), hex(s.colB)); gl.uniform3fv(P.u('u_colC'), hex(s.colC));
   gl.uniform3fv(P.u('u_bgTop'), hex(s.bgTop)); gl.uniform3fv(P.u('u_bgBot'), hex(s.bgBot));
+  gl.uniform1f(P.u('u_bound'), boundFor());
   gl.bindVertexArray(vao);
+  let q = null;
+  if (timerExt && !pendingQ) { q = gl.createQuery(); gl.beginQuery(timerExt.TIME_ELAPSED_EXT, q); }
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (q) { gl.endQuery(timerExt.TIME_ELAPSED_EXT); pendingQ = q; pendingPx = tw * bh; }
   gl.disable(gl.SCISSOR_TEST); gl.disable(gl.BLEND);
 
   if (++band >= bands) { band = 0; pass++; }
@@ -567,17 +597,41 @@ const status = $('#status');
 let lastT = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  const rawDt = now - lastT;
+  const dt = Math.min(0.1, rawDt / 1000); lastT = now;
+  // slow frame rate with an idle GPU -> do more work per frame (never beyond MAX_BUDGET_MS)
+  if (rawDt > 0 && rawDt < 250) frameDtAvg = frameDtAvg * 0.9 + rawDt * 0.1;
+  budgetMs = Math.max(FRAME_BUDGET_MS, Math.min(MAX_BUDGET_MS, frameDtAvg * 0.75));
   if (stepFly(dt)) markDirty();
   const interacting = now - lastInteract < 180;
   const scale = interacting ? 0.35 : 1;
   if (fitSizes(scale)) dirty = true;
   if (dirty) { updateCamInfo(); pass = 0; band = 0; dirty = false; }
-  if (interacting || pass < s.target) { renderBand(interacting); redraw = true; }
+  pollTimer();
+  if (interacting || pass < s.target) {
+    let spent = 0, n = 0;
+    do {
+      renderBand(interacting);
+      spent += estMs(Math.min(bandPixels, tw * th)); n++;
+    } while (!interacting && pass < s.target && spent + estMs(Math.min(bandPixels, tw * th)) <= budgetMs && n < 16);
+    redraw = true;
+  }
   if (redraw) { draw(); redraw = false; }
   const info = interacting ? 'moving' : `${Math.min(pass, s.target)} / ${s.target} samples`;
   status.textContent = `${outW}×${outH}${hasFloatBlend ? '' : ' (16-bit accum)'} · ${info} · focus ${cam.hit.toExponential(1)}${cam.hit < 3e-6 ? ' (precision limit)' : ''}`;
 }
+// Benchmark hook for the console: __bench(passes, overrides) -> ms per full-resolution pass (GPU-synchronised).
+window.__bench = (n = 4, overrides = {}) => {
+  const saved = { ...s }; Object.assign(s, overrides);
+  fitSizes(1); updateCamInfo();
+  const px = new Float32Array(4);
+  const run = () => { do { renderBand(false); } while (band !== 0); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, px); };
+  pass = 0; band = 0; run();                      // warm-up / compile
+  const t0 = performance.now(); for (let i = 0; i < n; i++) run();
+  const ms = (performance.now() - t0) / n;
+  Object.assign(s, saved); pass = 0; band = 0; dirty = true;
+  return +ms.toFixed(1);
+};
 applyPreset(0, true);   // default: Kleinian, closest to the reference image
 requestAnimationFrame(loop);
 })();

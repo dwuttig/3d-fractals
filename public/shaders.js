@@ -17,7 +17,7 @@ uniform int   u_frame;
 uniform int   u_formula, u_iter, u_steps, u_preview;
 uniform vec4  u_p;
 uniform vec3  u_ro, u_right, u_up, u_fwd;
-uniform float u_f, u_pix, u_aperture, u_focus, u_dist;
+uniform float u_f, u_pix, u_aperture, u_focus, u_dist, u_bound;
 uniform float u_ao, u_aoRad, u_fog, u_light, u_shadow;
 uniform vec3  u_lightDir;
 uniform vec3  u_colA, u_colB, u_colC, u_bgTop, u_bgBot;
@@ -132,6 +132,14 @@ float trace(vec3 ro, vec3 rd, out float steps){
   float t = 0.0;
   float tmax = u_dist*12.0 + 20.0;
   steps = 0.0;
+  if(u_bound > 0.0){                       // bounded fractal: rays that miss the sphere cost nothing
+    float b = dot(ro,rd), h = b*b - (dot(ro,ro) - u_bound*u_bound);
+    if(h < 0.0) return -1.0;
+    h = sqrt(h);
+    if(-b + h < 0.0) return -1.0;
+    t = max(-b - h, 0.0);
+    tmax = min(tmax, -b + h);
+  }
   for(int i=0;i<2048;i++){
     if(i>=u_steps) break;
     float d = map(ro+rd*t);
@@ -146,7 +154,7 @@ float trace(vec3 ro, vec3 rd, out float steps){
 float softShadow(vec3 ro, vec3 rd, float t0){
   float res = 1.0, t = t0;
   float tmax = u_dist*2.0;
-  for(int i=0;i<64;i++){
+  for(int i=0;i<40;i++){
     float h = map(ro+rd*t);
     res = min(res, 6.0*h/t);
     t += max(h, t*u_pix);
@@ -156,11 +164,13 @@ float softShadow(vec3 ro, vec3 rd, float t0){
 }
 
 float calcAO(vec3 p, vec3 n){
-  float occ = 0.0, w = 1.0;
-  for(int i=1;i<=6;i++){
+  // Two random taps per sample (one from the near half, one from the far half of the six original taps).
+  // 3x each makes this an unbiased estimate of the six-tap sum; the progressive accumulation averages it out.
+  float occ = 0.0;
+  for(int k=0;k<2;k++){
+    int i = 1 + k*3 + int(rnd()*3.0);
     float h = u_aoRad*float(i)/6.0;
-    occ += (h - map(p+n*h))*w/u_aoRad;
-    w *= 0.75;
+    occ += 3.0*(h - map(p+n*h))*pow(0.75, float(i-1))/u_aoRad;
   }
   return clamp(1.0 - u_ao*occ*0.9, 0.0, 1.0);
 }
@@ -213,7 +223,7 @@ void main(){
 
     vec3 L = normalize(u_lightDir);
     float dif = clamp(dot(n,L), 0.0, 1.0);
-    float sha = (u_preview==0 && u_shadow>0.0) ? mix(1.0, softShadow(p+n*e*2.0, L, e*4.0), u_shadow) : 1.0;
+    float sha = (u_preview==0 && u_shadow>0.0 && dif>0.0) ? mix(1.0, softShadow(p+n*e*2.0, L, e*4.0), u_shadow) : 1.0;
     float ao  = calcAO(p, n);
     float stepAO = 1.0 - pow(steps/float(u_steps), 0.6)*0.6;
     ao *= stepAO;
