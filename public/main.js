@@ -210,7 +210,7 @@ const FORMULAS = [
       { label: 'Cone radius', min: 0.25, max: 0.9, step: 0.001, def: 0.38 },
       { label: 'Floret fill', min: 0.6, max: 1.9, step: 0.001, def: 1.5 },
       { label: 'Columns', min: 5, max: 24, step: 1, def: 13, dyn: false },
-      { label: 'Spiral angle', min: 0, max: 6.2832, step: 0.001, def: 2.39996 },
+      { label: 'Spiral angle', min: 0, max: 360, step: 0.01, def: 137.508, angle: true },
     ],
     cam: { yaw: 0.6, pitch: 0.3, dist: 4.0, target: [0, 0, 0] } },
 ];
@@ -325,8 +325,8 @@ function paramDefs(fi) {
   const julia = [2, 4, 9, 10, 18, 19].includes(fi);
   return [
     ...FORMULAS[fi].params,
-    { label: 'Twist', min: -0.6, max: 0.6, step: 0.001, def: 0, dyn: false },
-    { label: 'Tilt', min: -0.6, max: 0.6, step: 0.001, def: 0, dyn: false },
+    { label: 'Twist', min: 0, max: 360, step: 0.1, def: 0, dyn: false, angle: true },
+    { label: 'Tilt', min: 0, max: 360, step: 0.1, def: 0, dyn: false, angle: true },
     { label: julia ? 'Julia offset' : 'Shift', min: julia ? -0.5 : -0.15, max: julia ? 0.5 : 0.15, step: 0.001, def: 0, dyn: false },
   ];
 }
@@ -340,12 +340,18 @@ function stepDynamic(now) {
     const k = Math.min(1, 0.03 * Math.pow(s.dynStrength, 2.18));
     const period = 24 + 9 * i;                           // seconds; a different slow rhythm per parameter
     const wave = 0.7 * Math.sin((2 * Math.PI * t) / period) + 0.3 * Math.sin((2 * Math.PI * t) / (period * 0.618));
-    const room = wave >= 0 ? q.max - dyn.base[i] : dyn.base[i] - q.min;
-    s.p[i] = Math.max(q.min, Math.min(q.max, dyn.base[i] + wave * k * room));
+    if (q.angle) {
+      // angles have no ends: swing up to +-180 degrees at the maximum strength and wrap around 0/360
+      const kA = Math.min(1, 0.006 * Math.pow(s.dynStrength, 3.2));
+      s.p[i] = (((dyn.base[i] + wave * kA * 180) % 360) + 360) % 360;
+    } else {
+      const room = wave >= 0 ? q.max - dyn.base[i] : dyn.base[i] - q.min;
+      s.p[i] = Math.max(q.min, Math.min(q.max, dyn.base[i] + wave * k * room));
+    }
     const ui = refs.params && refs.params[i];
     if (ui && document.activeElement !== ui.inp) {
       ui.inp.value = s.p[i];
-      ui.val.textContent = s.p[i].toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+      ui.val.textContent = q.angle ? s.p[i].toFixed(1) + '°' : s.p[i].toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
     }
   });
   return true;
@@ -361,7 +367,7 @@ function slider(group, label, key, min, max, step, opts = {}) {
   row.firstChild.textContent = label;
   const inp = row.children[1], val = row.children[2];
   inp.min = min; inp.max = max; inp.step = step; inp.value = get();
-  const fmt = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
+  const fmt = opts.fmt || ((v) => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''));
   val.textContent = fmt(+inp.value);
   inp.addEventListener('input', () => { const v = +inp.value; set(v); val.textContent = fmt(v); (opts.display ? needDisplay() : markDirty()); });
   if (opts.check) {
@@ -416,6 +422,7 @@ function buildFractalUI() {
   gParams.appendChild(hint);
   refs.params = paramDefs(s.formula).map((q, i) =>
     slider(gParams, q.label, null, q.min, q.max, q.step, {
+      fmt: q.angle ? (v) => v.toFixed(1) + '°' : undefined,
       get: () => s.p[i],
       set: (v) => { s.p[i] = v; if (dyn.on) dyn.base[i] = v; },
       check: {
@@ -446,6 +453,7 @@ function setFormula(i) {   // manual formula switch from the dropdown: keeps the
 function applyLook(i) {
   const base = {}; LOOK_KEYS.forEach((k) => { base[k] = LOOK_DEFAULT[k]; });
   Object.assign(s, base, LOOKS[i].look);
+  s.lightYaw = ((s.lightYaw % 360) + 360) % 360;
   currentLook = i;
   buildUI(); markDirty();
 }
@@ -453,6 +461,7 @@ function applyLook(i) {
 function applyPreset(i, full) {
   const pr = PRESETS[i], f = FORMULAS[pr.formula];
   Object.assign(s, LOOK_DEFAULT, pr.look || {});
+  s.lightYaw = ((s.lightYaw % 360) + 360) % 360;
   if (full) { s.res = 1; s.target = 400; s.dynStrength = 1; }
   s.formula = pr.formula;
   s.p = paramDefs(pr.formula).map((q, i) => (pr.p && i < pr.p.length ? pr.p[i] : q.def));
@@ -489,8 +498,8 @@ const gLight = $('#g-light'); gLight.innerHTML = '';
 select(gLight, 'Look preset', [{ label: 'Choose\u2026', value: -1 }, ...LOOKS.map((l, i) => ({ label: l.name, value: i })).sort(byLabel)],
   () => currentLook, (v) => { if (+v >= 0) applyLook(+v); });
 slider(gLight, 'Key light', 'light', 0, 3, 0.01);
-slider(gLight, 'Light azimuth', 'lightYaw', -180, 180, 1);
-slider(gLight, 'Light height', 'lightPitch', 0, 90, 1);
+slider(gLight, 'Light azimuth', 'lightYaw', 0, 360, 1, { fmt: (v) => v.toFixed(0) + '°' });
+slider(gLight, 'Light height', 'lightPitch', 0, 360, 1, { fmt: (v) => v.toFixed(0) + '°' });
 slider(gLight, 'Shadows', 'shadow', 0, 1, 0.01);
 slider(gLight, 'Occlusion', 'ao', 0, 2, 0.01);
 slider(gLight, 'Occl. radius', 'aoRad', 0.002, 0.3, 0.001);
@@ -576,7 +585,8 @@ const mod2 = (v) => v - 2 * Math.floor(v / 2);
 let xfCache = { key: '', v: null };
 function xfState() {
   const nb = FORMULAS[s.formula].params.length;
-  const tw = s.p[nb] || 0, ti = s.p[nb + 1] || 0, sh = s.p[nb + 2] || 0;
+  const DEG = Math.PI / 180;
+  const tw = (s.p[nb] || 0) * DEG, ti = (s.p[nb + 1] || 0) * DEG, sh = s.p[nb + 2] || 0;
   const key = tw + ',' + ti + ',' + sh;
   if (xfCache.key === key) return xfCache.v;
   const c1 = Math.cos(tw), s1 = Math.sin(tw), c2 = Math.cos(ti), s2 = Math.sin(ti);
@@ -724,7 +734,7 @@ function deMore2(p) {
   if (f === 26) {                                            // Romanesco (mirrors the shader)
     if (xf.on) { [x, y, z] = xfp(xf, x, y, z, true); }
     let qx = x * 0.5, qy = y * 0.5 + 0.5, qz = z * 0.5;
-    const Rb = q[0], fill = q[1], M = Math.max(q[2], 3), alpha = q[3], delta = 2 * Math.PI / M;
+    const Rb = q[0], fill = q[1], M = Math.max(q[2], 3), alpha = q[3] * Math.PI / 180, delta = 2 * Math.PI / M;
     const rho = clamp(1 - 1.5707963 * fill / M, 0.5, 0.97), lnr = Math.log(rho), Lc = Math.sqrt(1 + Rb * Rb);
     const cone = (a, b, c) => Math.max(-b, (Math.hypot(a, c) + b * Rb - Rb) / Lc);
     let scl = 1, d = cone(qx, qy, qz);
@@ -1051,6 +1061,7 @@ function renderBand(preview) {
   gl.uniform1i(P.u('u_steps'), preview ? Math.min(s.steps, 200) : s.steps);
   gl.uniform1i(P.u('u_preview'), preview ? 1 : 0);
   const pp = [...s.p.slice(0, FORMULAS[s.formula].params.length), 0, 0, 0, 0].slice(0, 4);
+  if (s.formula === 26) pp[3] *= Math.PI / 180;      // Romanesco's spiral angle is stored in degrees
   gl.uniform4f(P.u('u_p'), pp[0], pp[1], pp[2], pp[3]);
   const xf = xfState();
   gl.uniformMatrix3fv(P.u('u_rot'), false, xf.glm);
