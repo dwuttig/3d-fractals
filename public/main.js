@@ -166,7 +166,7 @@ const FORMULAS = [
       { label: 'Box limit', min: 0.4, max: 1.3, step: 0.001, def: 1.0 },
       { label: 'Scale', min: 0.6, max: 1.4, step: 0.001, def: 1.0 },
     ],
-    cam: { yaw: 0.5, pitch: 0.3, dist: 9.0, target: [0, 0, 0] } },
+    cam: { yaw: 0.5, pitch: 0.3, dist: 15.0, target: [0, 0, 0] } },
   { name: 'Mandelbar bulb', iter: 9, steps: 300,
     params: [{ label: 'Power', min: 2, max: 12, step: 0.01, def: 8 }],
     cam: { yaw: 0.5, pitch: 0.3, dist: 2.8, target: [0, 0, 0] } },
@@ -220,6 +220,16 @@ const s = { formula: 1, p: [], iter: 12, steps: 300, ...LOOK_DEFAULT, res: 1, ta
 const cam = { pos: [0, 0, 1], fwd: [0, 0, -1], up: [0, 1, 0], dist: 1, dist0: 1, de0: 1, de: 1, hit: 1, home: null };
 
 // A preset = formula + optional param/iter/steps/camera overrides + "look" overrides on top of LOOK_DEFAULT.
+// colour palettes shared by the presets of the newer formulas
+const PAL = {
+  gold: { colA: '#6b3a1a', colB: '#ffd28a', colC: '#ff8a3c', bgTop: '#ffd9a8', bgBot: '#8a3a2a', exposure: 1.3 },
+  ice: { colA: '#4b6a9c', colB: '#eaf6ff', colC: '#7fd2ff', bgTop: '#e4f2ff', bgBot: '#0c2a58', exposure: 1.3, sat: 0.9 },
+  night: { colA: '#3a1f4f', colB: '#ff6fa8', colC: '#4c7dff', bgTop: '#2a1740', bgBot: '#050510', exposure: 1.7, light: 2.0, vignette: 0.9 },
+  jade: { colA: '#1b5f60', colB: '#d8ffe0', colC: '#30e6c4', bgTop: '#6fd6c9', bgBot: '#04222c', exposure: 1.5 },
+  coral: { colA: '#7a2f3a', colB: '#ffb36b', colC: '#ff5e8a', bgTop: '#ffb199', bgBot: '#3a1a6b', exposure: 1.3, sat: 1.2 },
+  mono: { colA: '#2b2b2f', colB: '#f2f2f2', colC: '#8a8a95', bgTop: '#d8d8dc', bgBot: '#3a3a42', exposure: 1.4, sat: 0 },
+  bone: { colA: '#8c7a5b', colB: '#f3ead2', colC: '#7aa0d0', bgTop: '#b9bfe0', bgBot: '#2a5da0', exposure: 1.4 },
+};
 const PRESETS = [
   { name: 'Default: Rust & Azure', formula: 1 },
   { name: 'Golden Lace', formula: 1, iter: 13,
@@ -249,6 +259,26 @@ const PRESETS = [
     look: { aperture: 0, colA: '#8c7a5b', colB: '#f3ead2', colC: '#7aa0d0', bgTop: '#b9bfe0', bgBot: '#2a5da0', exposure: 1.4 } },
   { name: 'Tetra Crystal', formula: 5,
     look: { aperture: 0, colA: '#7a3a6a', colB: '#ffd1f0', colC: '#5ab0ff', bgTop: '#3b2a5a', bgBot: '#070818', light: 2.2, exposure: 1.6, vignette: 0.8 } },
+  { name: 'Octahedron Crystal', formula: 6, look: { ...PAL.ice, aperture: 0 } },
+  { name: 'Cantor Dust Night', formula: 7, look: { ...PAL.night, aperture: 0, exposure: 2.4, light: 2.6 } },
+  { name: 'Solid Tetrahedron Gold', formula: 8, look: { ...PAL.gold, aperture: 0 } },
+  { name: 'Burning Ship Coral', formula: 9, look: { ...PAL.coral, aperture: 0 } },
+  { name: 'Quadratic Bulb Jade', formula: 10, look: { ...PAL.jade, aperture: 0 } },
+  { name: 'Quaternion Julia Rose', formula: 11, look: { ...PAL.coral, aperture: 0 } },
+  { name: 'Gyroid Ball Ice', formula: 12, look: { ...PAL.ice, aperture: 0 } },
+  { name: 'Schwarz P Gold', formula: 13, look: { ...PAL.gold, aperture: 0 } },
+  { name: 'Schwarz D Night', formula: 14, look: { ...PAL.night, aperture: 0, exposure: 2.2, light: 2.4 } },
+  { name: 'Neovius Jade', formula: 15, look: { ...PAL.jade, aperture: 0 } },
+  { name: 'Cubic Julia Ink', formula: 16, look: { ...PAL.mono, aperture: 0 } },
+  { name: 'Quaternion Mandelbrot Gold', formula: 17, look: { ...PAL.gold, aperture: 0 } },
+  { name: 'Box-fold Bulb Rust', formula: 18, look: { aperture: 0 } },
+  { name: 'Mandelbar Bone', formula: 19, look: { ...PAL.bone, aperture: 0 } },
+  { name: 'Sphere Flake Pearl', formula: 20, look: { ...PAL.ice, aperture: 0 } },
+  { name: 'Vicsek Night', formula: 21, look: { ...PAL.night, aperture: 0, exposure: 2.4, light: 2.6 } },
+  { name: 'Mosely Snowflake Ice', formula: 22, look: { ...PAL.ice, aperture: 0 } },
+  { name: 'Cube Frame Gold', formula: 23, look: { ...PAL.gold, aperture: 0 } },
+  { name: 'Window Sponge Coral', formula: 24, look: { ...PAL.coral, aperture: 0 } },
+  { name: 'Quartic Julia Jade', formula: 25, look: { ...PAL.jade, aperture: 0 } },
 ];
 let currentPreset = 0;
 
@@ -867,6 +897,7 @@ function boundFor() {
     case 10: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
     case 12: case 13: case 14: case 15: return s.p[3] + 0.05;   // foams are clipped to their ball
     case 16: case 17: case 25: { const xf = xfState(); return 2.1 + Math.hypot(xf.sx, xf.sy, xf.sz); }
+    case 18: { const xf = xfState(); return 5.6 * Math.max(1, s.p[0]) * Math.max(1, s.p[1]) + Math.hypot(xf.sx, xf.sy, xf.sz) * 3; }
     case 19: { const xf = xfState(); return (s.p[0] >= 6 ? 1.5 : 2.1) + Math.hypot(xf.sx, xf.sy, xf.sz) * 1.4; }
     case 20: { const xf = xfState(); return 1 + 2 * s.p[0] / (1 - s.p[0]) + 0.1 + Math.hypot(xf.sx, xf.sy, xf.sz); }
     case 21: case 22: case 23: case 24: { const xf = xfState(); return 1.75 + Math.hypot(xf.sx, xf.sy, xf.sz); }
