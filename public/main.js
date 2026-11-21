@@ -140,6 +140,27 @@ const LOOKS = [
 ];
 let currentLook = -1;
 
+// Dynamic mode: formula parameters drift slowly around the values they had when it was switched on.
+// Switching it off simply stops the drift, so the parameters stay wherever they are.
+const dyn = { on: false, base: [], t0: 0 };
+function dynRebase() { dyn.base = [...s.p]; dyn.t0 = performance.now(); }
+function stepDynamic(now) {
+  if (!dyn.on) return false;
+  const t = (now - dyn.t0) / 1000;
+  FORMULAS[s.formula].params.forEach((q, i) => {
+    const amp = 0.015 * (q.max - q.min);                 // 1.5% of the slider range: a gentle morph
+    const period = 24 + 9 * i;                           // seconds; a different slow rhythm per parameter
+    const wave = 0.7 * Math.sin((2 * Math.PI * t) / period) + 0.3 * Math.sin((2 * Math.PI * t) / (period * 0.618));
+    s.p[i] = Math.max(q.min, Math.min(q.max, dyn.base[i] + amp * wave));
+    const ui = refs.params && refs.params[i];
+    if (ui && document.activeElement !== ui.inp) {
+      ui.inp.value = s.p[i];
+      ui.val.textContent = s.p[i].toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    }
+  });
+  return true;
+}
+
 // ---------- UI ----------
 const refs = {};
 function slider(group, label, key, min, max, step, opts = {}) {
@@ -191,15 +212,23 @@ function buildFractalUI() {
   select(gFractal, 'Formula', FORMULAS.map((f, i) => ({ label: f.name, value: i })), () => s.formula, (v) => setFormula(+v));
   slider(gFractal, 'Iterations', 'iter', 2, 20, 1);
   gParams.innerHTML = '';
-  FORMULAS[s.formula].params.forEach((q, i) =>
-    slider(gParams, q.label, null, q.min, q.max, q.step, { get: () => s.p[i], set: (v) => { s.p[i] = v; } }));
+  refs.params = FORMULAS[s.formula].params.map((q, i) =>
+    slider(gParams, q.label, null, q.min, q.max, q.step, { get: () => s.p[i], set: (v) => { s.p[i] = v; if (dyn.on) dyn.base[i] = v; } }));
   gFractal.appendChild(gParams);
   slider(gFractal, 'Max steps', 'steps', 50, 800, 10);
+  const row = document.createElement('div'); row.className = 'row buttons';
+  row.innerHTML = '<button></button>';
+  const btn = row.firstChild;
+  const label = () => { btn.textContent = dyn.on ? 'Dynamic mode: ON' : 'Dynamic mode: off'; btn.classList.toggle('on', dyn.on); };
+  label();
+  btn.onclick = () => { dyn.on = !dyn.on; if (dyn.on) dynRebase(); label(); btn.blur(); markDirty(); };
+  gFractal.appendChild(row);
 }
 function setFormula(i) {   // manual formula switch from the dropdown: keeps the current look
   s.formula = i;
   const f = FORMULAS[i];
   s.p = f.params.map((q) => q.def); s.iter = f.iter; s.steps = f.steps;
+  dynRebase();
   setCamFromOrbit(f.cam);
   buildFractalUI(); markDirty();
 }
@@ -218,6 +247,7 @@ function applyPreset(i, full) {
   s.formula = pr.formula;
   s.p = pr.p ? [...pr.p] : f.params.map((q) => q.def);
   s.iter = pr.iter ?? f.iter; s.steps = pr.steps ?? f.steps;
+  dynRebase();
   setCamFromOrbit({ ...f.cam, ...(pr.cam || {}) });
   currentPreset = i;
   currentLook = -1;
@@ -609,6 +639,7 @@ function loop(now) {
   if (rawDt > 0 && rawDt < 250) frameDtAvg = frameDtAvg * 0.9 + rawDt * 0.1;
   budgetMs = Math.max(FRAME_BUDGET_MS, Math.min(MAX_BUDGET_MS, frameDtAvg * 0.75));
   if (stepFly(dt)) markDirty();
+  if (stepDynamic(now)) markDirty();
   const interacting = now - lastInteract < 180;
   if (!interacting) updatePreviewScale();
   const scale = interacting ? previewScale : 1;

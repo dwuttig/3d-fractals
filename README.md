@@ -16,6 +16,8 @@ soft shadows, ambient occlusion, film grain and PNG export. Fly through the frac
 | Mouse wheel | Fly speed |
 | X | Level the horizon |
 
+**Dynamic mode** (Fractal section) makes the formula parameters drift slowly; turning it off keeps the current values.
+
 Speed scales with the free distance ahead, so you can keep diving in without hitting the surface.
 
 ## Run with Docker
