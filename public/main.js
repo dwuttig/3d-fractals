@@ -541,7 +541,7 @@ let tex = null, fbo = null, tw = 0, th = 0, outW = 0, outH = 0;
 let pass = 0, band = 0, dirty = true, redraw = true, lastInteract = -1e9, curScale = 1;
 
 function allocTarget(w, h) {
-  if (tex) { gl.deleteTexture(tex); gl.deleteFramebuffer(fbo); }
+  const oldTex = tex, oldFbo = fbo, oldW = tw, oldH = th;
   tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texStorage2D(gl.TEXTURE_2D, 1, ACCUM_FORMAT, w, h);
@@ -550,6 +550,12 @@ function allocTarget(w, h) {
   fbo = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  if (oldTex) {   // carry the last image over (scaled), so bands that are not rendered yet never show up black
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, oldFbo); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbo);
+    gl.blitFramebuffer(0, 0, oldW, oldH, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.deleteTexture(oldTex); gl.deleteFramebuffer(oldFbo);
+  }
   tw = w; th = h;
 }
 function fitSizes(scale) {
@@ -1113,10 +1119,14 @@ function draw() {
 const status = $('#status');
 let lastT = 0, previewScale = 0.5;
 // Pick the preview resolution from the measured GPU cost so that moving stays smooth but as sharp as possible.
-function updatePreviewScale() {
+// While moving it only ever steps down, and only when frames get clearly too slow (no flicker between sizes).
+function updatePreviewScale(moving) {
   if (!msPerMpx) return;
-  const sc = Math.sqrt(9 / (msPerMpx * (outW * outH) / 1e6));
-  previewScale = [0.25, 0.35, 0.5, 0.7, 1].filter((v) => v <= sc).pop() ?? 0.25;
+  const mpx = (outW * outH) / 1e6;
+  if (moving && msPerMpx * mpx * previewScale * previewScale < 35) return;
+  const sc = Math.sqrt(9 / (msPerMpx * mpx));
+  const next = [0.25, 0.35, 0.5, 0.7, 1].filter((v) => v <= sc).pop() ?? 0.25;
+  previewScale = moving ? Math.min(previewScale, next) : next;
 }
 let compileNotice = false;
 function loop(now) {
@@ -1133,17 +1143,23 @@ function loop(now) {
   if (stepFly(dt)) markDirty();
   if (stepDynamic(now)) markDirty();
   const interacting = now - lastInteract < 180;
-  if (!interacting) updatePreviewScale();
+  updatePreviewScale(interacting);
   const scale = interacting ? previewScale : 1;
   if (fitSizes(scale)) dirty = true;
   if (dirty) { updateCamInfo(); pass = 0; band = 0; dirty = false; }
   pollTimer();
   if (interacting || pass < s.target) {
     let spent = 0, n = 0;
-    do {
-      renderBand(interacting);
-      spent += estMs(Math.min(bandPixels, tw * th)); n++;
-    } while (!interacting && pass < s.target && spent + estMs(Math.min(bandPixels, tw * th)) <= budgetMs && n < 16);
+    if (interacting) {
+      // The camera changes every frame and restarts the image, so a partial frame would leave the other
+      // bands stale: always render the whole preview.
+      do { renderBand(true); } while (band !== 0);
+    } else {
+      do {
+        renderBand(false);
+        spent += estMs(Math.min(bandPixels, tw * th)); n++;
+      } while (pass < s.target && spent + estMs(Math.min(bandPixels, tw * th)) <= budgetMs && n < 16);
+    }
     redraw = true;
   }
   if (redraw) { draw(); redraw = false; }
